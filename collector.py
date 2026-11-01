@@ -113,10 +113,15 @@ class GamersClubCollector:
         url = f"https://gamersclub.com.br/api/box/history/{self.player_id}"
         resp = self.session.get(url, timeout=15)
         if resp.status_code == 200:
-            data = resp.json()
-            months = data.get("months", [])
-            print(f" -> {len(months)} meses encontrados no histórico da GC.")
-            return months
+            try:
+                data = resp.json()
+                months = data.get("months", [])
+                print(f" -> {len(months)} meses encontrados no histórico da GC.")
+                return months
+            except Exception as e:
+                print(f"Erro ao analisar meses: {e}")
+                return []
+        print(f"Aviso ao buscar meses GC: HTTP {resp.status_code} - {resp.text[:200]}")
         return []
 
     def parse_stat_dict(self, stat_list: List[Dict[str, str]]) -> Dict[str, Any]:

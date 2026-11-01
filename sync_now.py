@@ -36,7 +36,14 @@ def sync_recent(months_count=2, auto_push=True):
     
     # Obtém os meses disponíveis mais recentes da GC
     all_months = collector.fetch_available_months()
-    recent_months = all_months[:months_count] if all_months else []
+    if not all_months:
+        from database import get_all_months
+        db_m = get_all_months()
+        cur_m = datetime.now().strftime("%Y-%m")
+        recent_months = [cur_m] + [m for m in db_m if m != cur_m][:months_count-1]
+        print(f"Usando meses de fallback: {recent_months}")
+    else:
+        recent_months = all_months[:months_count]
 
     updated_count = 0
     matches_count = 0
