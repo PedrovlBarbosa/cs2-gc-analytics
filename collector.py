@@ -190,7 +190,7 @@ class GamersClubCollector:
     def fetch_matches_for_month(self, pid: int, month: str) -> List[Dict[str, Any]]:
         """Busca todas as partidas de um mês paginadas."""
         matches_result = []
-        page = 1
+        page = 0
         while True:
             url = f"https://gamersclub.com.br/api/box/historyMatchesPage/{pid}/{month}/{page}"
             try:

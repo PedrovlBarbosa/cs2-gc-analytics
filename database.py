@@ -57,7 +57,7 @@ def init_db(db_path: str = DB_PATH):
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS matches (
-        match_id INTEGER PRIMARY KEY,
+        match_id INTEGER,
         player_id INTEGER,
         month TEXT,
         team_name_a TEXT,
@@ -70,6 +70,7 @@ def init_db(db_path: str = DB_PATH):
         map TEXT,
         match_type TEXT,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (match_id, player_id),
         FOREIGN KEY (player_id) REFERENCES players (player_id)
     )
     """)
@@ -169,7 +170,7 @@ def save_matches(matches_list: List[Dict[str, Any]], db_path: str = DB_PATH):
             team_name_b, score_b, win, rating_player, rating_diff, map, match_type, updated_at
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(match_id) DO UPDATE SET
+        ON CONFLICT(match_id, player_id) DO UPDATE SET
             month = excluded.month,
             team_name_a = excluded.team_name_a,
             score_a = excluded.score_a,
@@ -346,13 +347,19 @@ def get_matches_by_month(month: Optional[str] = None, player_id: Optional[int] =
     conditions = []
     params = []
     if month and month != "Todos":
-        conditions.append("month = ?")
+        conditions.append("m.month = ?")
         params.append(month)
     if player_id:
-        conditions.append("player_id = ?")
+        conditions.append("m.player_id = ?")
         params.append(player_id)
     where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
-    query = f"SELECT * FROM matches {where_clause} ORDER BY match_id DESC"
+    query = f"""
+    SELECT m.*, p.nick as player_nick 
+    FROM matches m 
+    LEFT JOIN players p ON m.player_id = p.player_id 
+    {where_clause} 
+    ORDER BY m.match_id DESC
+    """
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df

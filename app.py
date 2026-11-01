@@ -485,16 +485,36 @@ with tab_individual:
             else:
                 st.info("Sem registro de Hitbox para este jogador.")
 
+# Mapeamento de Nick para ID
+PLAYER_NAME_TO_ID = {
+    'KrannDy': 108698,
+    'Aquarista': 87484,
+    'Art': 108939,
+    'Cherki': 540777,
+    'Death': 318687,
+    'Kinha': 108940,
+    'mch': 89302
+}
+
 # -----------------------------------------------------------------------------
 # TAB 4: ANÁLISE DE MAPAS
 # -----------------------------------------------------------------------------
 with tab_maps:
     st.subheader(f"🗺️ Desempenho por Mapa ({period_label})")
-    main_pid = 108698
-    matches_df = get_matches_by_month(month_filter, main_pid)
+    
+    col_map_sel, _ = st.columns([1, 2])
+    with col_map_sel:
+        selected_map_player = st.selectbox(
+            "Filtrar Partidas por Jogador:",
+            options=["Todos do Squad"] + CORE_PLAYERS,
+            index=0,
+            key="map_player_select"
+        )
+    target_map_pid = PLAYER_NAME_TO_ID.get(selected_map_player) if selected_map_player != "Todos do Squad" else None
+    matches_df = get_matches_by_month(month_filter, target_map_pid)
 
     if matches_df.empty:
-        st.info("Nenhuma partida com registro de mapa encontrada para este período.")
+        st.info("Nenhuma partida com registro de mapa encontrada para este período/filtro.")
     else:
         map_stats = matches_df.groupby("map").agg(
             total=('match_id', 'count'),
@@ -508,7 +528,7 @@ with tab_maps:
         with m_col1:
             fig_map_vol = px.bar(
                 map_stats, x="map", y=["wins", "losses"],
-                title="Vitórias e Derrotas por Mapa",
+                title=f"Vitórias e Derrotas por Mapa ({selected_map_player})",
                 color_discrete_map={"wins": "#10b981", "losses": "#ef4444"},
                 barmode="stack"
             )
@@ -518,7 +538,7 @@ with tab_maps:
         with m_col2:
             fig_map_wr = px.bar(
                 map_stats, x="map", y="win_rate",
-                title="Taxa de Vitória (%) por Mapa",
+                title=f"Taxa de Vitória (%) por Mapa ({selected_map_player})",
                 color="win_rate", color_continuous_scale="Tealgrn", text="win_rate"
             )
             fig_map_wr.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
@@ -529,20 +549,33 @@ with tab_maps:
 # TAB 5: PARTIDAS RECENTES
 # -----------------------------------------------------------------------------
 with tab_matches:
-    st.subheader(f"📜 Histórico de Partidas do Time ({period_label})")
-    matches_df = get_matches_by_month(month_filter, 108698)
+    st.subheader(f"📜 Histórico de Partidas ({period_label})")
+    
+    col_p_match, _ = st.columns([1, 2])
+    with col_p_match:
+        selected_p_match = st.selectbox(
+            "Filtrar Partidas por Jogador:",
+            options=["Todos do Squad"] + CORE_PLAYERS,
+            index=0,
+            key="matches_player_select"
+        )
+    target_match_pid = PLAYER_NAME_TO_ID.get(selected_p_match) if selected_p_match != "Todos do Squad" else None
+    matches_df = get_matches_by_month(month_filter, target_match_pid)
     
     if matches_df.empty:
-        st.info("Nenhuma partida listada para este período.")
+        st.info("Nenhuma partida listada para este período/filtro.")
     else:
+        st.caption(f"Mostrando **{len(matches_df)}** partidas registradas para {selected_p_match}.")
         m_display = matches_df.copy()
         m_display["resultado"] = m_display["win"].apply(lambda w: "🏆 Vitória" if w == 1 else "❌ Derrota")
         m_display["placar"] = m_display.apply(lambda r: f"{r['score_a']} x {r['score_b']}", axis=1)
         m_display["diff"] = m_display["rating_diff"].apply(lambda d: f"+{d}" if d > 0 else str(d))
+        m_display["player_nick"] = m_display["player_nick"].fillna("Desconhecido")
 
-        cols = ["match_id", "resultado", "map", "placar", "team_name_a", "team_name_b", "rating_player", "diff"]
+        cols = ["match_id", "player_nick", "resultado", "map", "placar", "team_name_a", "team_name_b", "rating_player", "diff"]
         renamed = {
             "match_id": "ID Partida",
+            "player_nick": "Jogador",
             "resultado": "Resultado",
             "map": "Mapa",
             "placar": "Placar",

@@ -38,17 +38,19 @@ def sync_recent(months_count=2, auto_push=True):
     recent_months = all_months[:months_count] if all_months else []
 
     updated_count = 0
+    matches_count = 0
     for m in recent_months:
         for nick, pid in TARGET_PLAYERS.items():
             stats = collector.fetch_player_month_stats(pid, m)
             if stats and stats.get("matches", 0) > 0:
                 save_monthly_stats(stats)
                 updated_count += 1
+            
+            p_matches = collector.fetch_matches_for_month(pid, m)
+            if p_matches:
+                save_matches(p_matches)
+                matches_count += len(p_matches)
             time.sleep(0.04)
-
-        matches = collector.fetch_matches_for_month(int(collector.player_id), m)
-        if matches:
-            save_matches(matches)
 
     pushed = False
     if auto_push:
