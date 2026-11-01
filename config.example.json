@@ -1,0 +1,14 @@
+{
+  "player_id": "108698",
+  "player_nick": "KrannDy",
+  "cookies": {
+    "gclubsess": "SEU_COOKIE_GCLUBSESS_AQUI",
+    "cf_clearance": "SEU_CF_CLEARANCE_AQUI",
+    "gcid:accessToken": "SEU_TOKEN_AQUI"
+  },
+  "headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://gamersclub.com.br/player/108698",
+    "Accept": "application/json, text/plain, */*"
+  }
+}
