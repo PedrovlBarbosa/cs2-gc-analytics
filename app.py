@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -93,18 +94,29 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("⚡ Sincronização")
-    if st.button("🔄 Sincronizar Jogos Agora", use_container_width=True, type="primary"):
-        with st.spinner("Buscando partidas na Gamers Club e atualizando..."):
-            try:
-                from sync_now import sync_recent
-                m_cnt, up_cnt, pushed = sync_recent(2, auto_push=True)
-                if pushed:
-                    st.success(f"✅ Atualizado! {up_cnt} estatísticas sincronizadas e publicadas para os amigos!")
-                else:
-                    st.success(f"✅ Atualizado! {up_cnt} estatísticas sincronizadas localmente.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao sincronizar: {e}")
+    
+    has_local_config = os.path.exists("config.json")
+    has_cloud_secrets = False
+    try:
+        has_cloud_secrets = hasattr(st, "secrets") and ("GC_CONFIG" in st.secrets or "cookies" in st.secrets)
+    except Exception:
+        pass
+
+    if has_local_config or has_cloud_secrets:
+        if st.button("🔄 Sincronizar Jogos Agora", use_container_width=True, type="primary"):
+            with st.spinner("Buscando partidas na Gamers Club e atualizando..."):
+                try:
+                    from sync_now import sync_recent
+                    m_cnt, up_cnt, pushed = sync_recent(2, auto_push=has_local_config)
+                    if pushed:
+                        st.success(f"✅ Atualizado! {up_cnt} estatísticas sincronizadas e publicadas para os amigos!")
+                    else:
+                        st.success(f"✅ Atualizado! {up_cnt} estatísticas sincronizadas com sucesso.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao sincronizar: {e}")
+    else:
+        st.info("💡 **Aviso:** Como este link está na nuvem pública (Streamlit Cloud), a sincronização é feita com 1 clique pelo seu computador (onde seus cookies estão salvos com segurança) ou configurando 'Secrets' nas opções do Streamlit.")
 
     st.markdown("---")
     st.subheader("🗓️ Filtro de Período")

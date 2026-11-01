@@ -10,10 +10,33 @@ from database import init_db, save_player, save_monthly_stats, save_matches
 CONFIG_FILE = "config.json"
 
 def load_config(config_path: str = CONFIG_FILE) -> Dict[str, Any]:
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Arquivo de configuração '{config_path}' não encontrado.")
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    # 1. Tenta carregar do arquivo local config.json
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+            
+    # 2. Se estiver rodando no Streamlit Cloud, tenta carregar de st.secrets
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets"):
+            if "GC_CONFIG" in st.secrets:
+                raw = st.secrets["GC_CONFIG"]
+                return json.loads(raw) if isinstance(raw, str) else dict(raw)
+            if "cookies" in st.secrets:
+                return {
+                    "player_id": st.secrets.get("player_id", "108698"),
+                    "player_nick": st.secrets.get("player_nick", "KrannDy"),
+                    "cookies": dict(st.secrets.get("cookies", {})),
+                    "headers": dict(st.secrets.get("headers", {}))
+                }
+    except Exception:
+        pass
+
+    raise FileNotFoundError(
+        "Arquivo de configuração 'config.json' não encontrado. "
+        "No computador local, certifique-se de que o 'config.json' está na pasta. "
+        "No Streamlit Cloud, configure seus cookies em 'Settings -> Secrets'."
+    )
 
 class GamersClubCollector:
     def __init__(self, config: Dict[str, Any]):
