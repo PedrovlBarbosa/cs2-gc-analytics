@@ -298,24 +298,35 @@ def get_core_squad_totals(month: Optional[str] = None, db_path: str = DB_PATH) -
     if df.empty:
         return {}
 
-    total_matches = int(df["matches"].sum())
-    total_wins = int(df["wins"].sum())
-    total_loss = int(df["loss"].sum())
-    win_rate = round((total_wins / total_matches * 100), 1) if total_matches > 0 else 0.0
+    conn = get_connection(db_path)
+    if month and month != "Todos":
+        q = "SELECT match_id, MAX(win) as win FROM matches WHERE month = ? GROUP BY match_id"
+        u_df = pd.read_sql_query(q, conn, params=(month,))
+    else:
+        q = "SELECT match_id, MAX(win) as win FROM matches GROUP BY match_id"
+        u_df = pd.read_sql_query(q, conn)
+    conn.close()
 
+    unique_matches = len(u_df)
+    unique_wins = int(u_df["win"].sum()) if unique_matches > 0 else 0
+    unique_loss = unique_matches - unique_wins
+    unique_win_rate = round((unique_wins / unique_matches * 100), 1) if unique_matches > 0 else 0.0
+
+    total_matches_participations = int(df["matches"].sum())
     total_kills = int(df["kills"].sum())
     total_deaths = int(df["deaths"].sum())
     kdr = round(total_kills / total_deaths, 2) if total_deaths > 0 else 0.0
 
     # ADR ponderado do squad
-    adr = round((df["adr"] * df["matches"]).sum() / total_matches, 1) if total_matches > 0 else 0.0
+    adr = round((df["adr"] * df["matches"]).sum() / total_matches_participations, 1) if total_matches_participations > 0 else 0.0
 
     return {
         "players_count": len(df),
-        "total_matches": total_matches,
-        "total_wins": total_wins,
-        "total_loss": total_loss,
-        "win_rate": win_rate,
+        "unique_matches": unique_matches,
+        "unique_wins": unique_wins,
+        "unique_loss": unique_loss,
+        "unique_win_rate": unique_win_rate,
+        "total_participations": total_matches_participations,
         "total_kills": total_kills,
         "total_deaths": total_deaths,
         "kdr": kdr,

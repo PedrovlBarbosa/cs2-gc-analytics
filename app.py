@@ -165,17 +165,17 @@ with tab_squad_totals:
     with c1:
         st.markdown(f"""
         <div class='metric-card'>
-            <div class='metric-title'>Jogos no Conjunto</div>
-            <div class='metric-value'>{squad_totals['total_matches']:,}</div>
-            <div class='metric-sub'>{squad_totals['total_wins']:,}V - {squad_totals['total_loss']:,}D</div>
+            <div class='metric-title'>Partidas do Time</div>
+            <div class='metric-value'>{squad_totals['unique_matches']:,}</div>
+            <div class='metric-sub'>{squad_totals['unique_wins']:,}V - {squad_totals['unique_loss']:,}D ({squad_totals['total_participations']:,} indiv.)</div>
         </div>
         """, unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
         <div class='metric-card'>
             <div class='metric-title'>Win Rate do Time</div>
-            <div class='metric-value'>{squad_totals['win_rate']:.1f}%</div>
-            <div class='metric-sub'>Taxa de Vitória Geral</div>
+            <div class='metric-value'>{squad_totals['unique_win_rate']:.1f}%</div>
+            <div class='metric-sub'>Taxa de Vitória Real</div>
         </div>
         """, unsafe_allow_html=True)
     with c3:
@@ -516,7 +516,10 @@ with tab_maps:
     if matches_df.empty:
         st.info("Nenhuma partida com registro de mapa encontrada para este período/filtro.")
     else:
-        map_stats = matches_df.groupby("map").agg(
+        # Se for squad geral, deduplica para não contar a mesma partida 5 vezes por mapa
+        calc_map_df = matches_df.drop_duplicates(subset=["match_id"]) if target_map_pid is None else matches_df
+
+        map_stats = calc_map_df.groupby("map").agg(
             total=('match_id', 'count'),
             wins=('win', 'sum')
         ).reset_index()
@@ -565,23 +568,51 @@ with tab_matches:
     if matches_df.empty:
         st.info("Nenhuma partida listada para este período/filtro.")
     else:
-        st.caption(f"Mostrando **{len(matches_df)}** partidas registradas para {selected_p_match}.")
-        m_display = matches_df.copy()
-        m_display["resultado"] = m_display["win"].apply(lambda w: "🏆 Vitória" if w == 1 else "❌ Derrota")
-        m_display["placar"] = m_display.apply(lambda r: f"{r['score_a']} x {r['score_b']}", axis=1)
-        m_display["diff"] = m_display["rating_diff"].apply(lambda d: f"+{d}" if d > 0 else str(d))
-        m_display["player_nick"] = m_display["player_nick"].fillna("Desconhecido")
+        if target_match_pid is None:
+            # Agrupa partidas do time para não duplicar o mesmo jogo 5 vezes
+            grouped_records = []
+            for mid, grp in matches_df.groupby("match_id", sort=False):
+                first = grp.iloc[0]
+                nicks_in_match = ", ".join(grp["player_nick"].dropna().unique().tolist())
+                grouped_records.append({
+                    "match_id": mid,
+                    "jogadores": nicks_in_match,
+                    "resultado": "🏆 Vitória" if first["win"] == 1 else "❌ Derrota",
+                    "map": first["map"],
+                    "placar": f"{first['score_a']} x {first['score_b']}",
+                    "team_name_a": first["team_name_a"],
+                    "team_name_b": first["team_name_b"],
+                    "qtd": len(grp)
+                })
+            m_display = pd.DataFrame(grouped_records)
+            st.caption(f"Mostrando **{len(m_display)}** partidas disputadas pelo time no período.")
+            cols = ["match_id", "resultado", "map", "placar", "jogadores", "team_name_a", "team_name_b"]
+            renamed = {
+                "match_id": "ID Partida",
+                "resultado": "Resultado",
+                "map": "Mapa",
+                "placar": "Placar",
+                "jogadores": "Jogadores Presentes",
+                "team_name_a": "Time A",
+                "team_name_b": "Time B"
+            }
+            st.dataframe(m_display[cols].rename(columns=renamed), use_container_width=True)
+        else:
+            st.caption(f"Mostrando **{len(matches_df)}** partidas registradas para {selected_p_match}.")
+            m_display = matches_df.copy()
+            m_display["resultado"] = m_display["win"].apply(lambda w: "🏆 Vitória" if w == 1 else "❌ Derrota")
+            m_display["placar"] = m_display.apply(lambda r: f"{r['score_a']} x {r['score_b']}", axis=1)
+            m_display["diff"] = m_display["rating_diff"].apply(lambda d: f"+{d}" if d > 0 else str(d))
 
-        cols = ["match_id", "player_nick", "resultado", "map", "placar", "team_name_a", "team_name_b", "rating_player", "diff"]
-        renamed = {
-            "match_id": "ID Partida",
-            "player_nick": "Jogador",
-            "resultado": "Resultado",
-            "map": "Mapa",
-            "placar": "Placar",
-            "team_name_a": "Time A",
-            "team_name_b": "Time B",
-            "rating_player": "Rating Final",
-            "diff": "Pontos (RP)"
-        }
-        st.dataframe(m_display[cols].rename(columns=renamed), use_container_width=True)
+            cols = ["match_id", "resultado", "map", "placar", "team_name_a", "team_name_b", "rating_player", "diff"]
+            renamed = {
+                "match_id": "ID Partida",
+                "resultado": "Resultado",
+                "map": "Mapa",
+                "placar": "Placar",
+                "team_name_a": "Time A",
+                "team_name_b": "Time B",
+                "rating_player": "Rating Final",
+                "diff": "Pontos (RP)"
+            }
+            st.dataframe(m_display[cols].rename(columns=renamed), use_container_width=True)
