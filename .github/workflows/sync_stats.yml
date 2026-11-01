@@ -9,6 +9,8 @@ on:
 jobs:
   update-stats:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout do Repositório
         uses: actions/checkout@v4

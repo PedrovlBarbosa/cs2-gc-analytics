@@ -1,3 +1,4 @@
+import os
 import time
 import subprocess
 from datetime import datetime
@@ -53,7 +54,7 @@ def sync_recent(months_count=2, auto_push=True):
             time.sleep(0.04)
 
     pushed = False
-    if auto_push:
+    if auto_push and not os.environ.get("GITHUB_ACTIONS"):
         pushed = push_to_github()
 
     return len(recent_months), updated_count, pushed
