@@ -209,7 +209,7 @@ class GamersClubCollector:
                     break
                 for m in page_matches:
                     m_id = m.get("id")
-                    if m_id in known_ids:
+                    if m_id in known_ids or str(m_id) in known_ids:
                         hit_known = True
                         break
                     new_matches.append({

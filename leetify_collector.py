@@ -4,7 +4,7 @@ import time
 import requests
 from collections import defaultdict
 from typing import Dict, List, Any
-from database import get_connection, DB_PATH
+from database import get_connection, DB_PATH, get_known_match_ids, save_matches
 
 # Garante suporte a UTF-8 no terminal Windows
 if sys.platform == "win32":
@@ -27,7 +27,6 @@ def get_leetify_headers() -> Dict[str, str]:
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
-    # Tenta carregar API key se o usuário configurou
     try:
         from collector import load_config
         cfg = load_config()
@@ -50,57 +49,12 @@ def fetch_player_steam_matches(steam_id: str) -> List[Dict[str, Any]]:
                 if isinstance(data, list):
                     return data
             elif resp.status_code == 429:
-                time.sleep(10 * (attempt + 1))
+                time.sleep(5 * (attempt + 1))
             else:
                 break
-        except Exception as e:
-            time.sleep(2)
+        except Exception:
+            time.sleep(1)
     return []
-
-def save_steam_match(m: Dict[str, Any], player_id: int, db_path: str = DB_PATH):
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO matches (
-        match_id, player_id, month, team_name_a, score_a,
-        team_name_b, score_b, win, rating_player, rating_diff,
-        map, match_type, platform, kills, deaths, adr, hs_percent, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(match_id, player_id) DO UPDATE SET
-        month = excluded.month,
-        score_a = excluded.score_a,
-        score_b = excluded.score_b,
-        win = excluded.win,
-        map = excluded.map,
-        match_type = excluded.match_type,
-        platform = excluded.platform,
-        kills = excluded.kills,
-        deaths = excluded.deaths,
-        adr = excluded.adr,
-        hs_percent = excluded.hs_percent,
-        updated_at = CURRENT_TIMESTAMP
-    """, (
-        m["match_id"],
-        player_id,
-        m["month"],
-        m.get("team_name_a", "Seu Time"),
-        m.get("score_a", 0),
-        m.get("team_name_b", "Adversário"),
-        m.get("score_b", 0),
-        m.get("win", 0),
-        m.get("rating_player", 0),
-        m.get("rating_diff", 0),
-        m.get("map", ""),
-        m.get("match_type", "premier"),
-        "STEAM",
-        m.get("kills", 0),
-        m.get("deaths", 0),
-        m.get("adr", 0.0),
-        m.get("hs_percent", 0.0)
-    ))
-    conn.commit()
-    conn.close()
 
 def save_steam_monthly_stats(stats: Dict[str, Any], db_path: str = DB_PATH):
     conn = get_connection(db_path)
@@ -141,28 +95,84 @@ def save_steam_monthly_stats(stats: Dict[str, Any], db_path: str = DB_PATH):
     conn.commit()
     conn.close()
 
-def sync_steam_matches(db_path: str = DB_PATH):
-    print("🎯 Iniciando sincronização das partidas da STEAM (Premier & MM) via Leetify...")
+def recalculate_steam_monthly_stats(player_id: int, month: str, db_path: str = DB_PATH):
+    """Recalcula os dados agregados mensais para o jogador a partir das partidas no banco."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT 
+            COUNT(match_id) as matches,
+            SUM(win) as wins,
+            SUM(kills) as kills,
+            SUM(deaths) as deaths,
+            AVG(adr) as adr,
+            AVG(hs_percent) as hs_percent
+        FROM matches
+        WHERE player_id = ? AND month = ? AND platform = 'STEAM'
+    """, (player_id, month))
+    row = cursor.fetchone()
+    conn.close()
+
+    if row and row[0] and row[0] > 0:
+        matches_cnt = row[0]
+        wins = row[1] or 0
+        loss = matches_cnt - wins
+        wr = round((wins / matches_cnt) * 100, 1)
+        kills = row[2] or 0
+        deaths = row[3] or 0
+        kdr = round(kills / deaths, 2) if deaths > 0 else 0.0
+        adr = round(row[4] or 0.0, 1)
+        hs_pct = round(row[5] or 0.0, 1)
+
+        save_steam_monthly_stats({
+            "player_id": player_id,
+            "month": month,
+            "matches": matches_cnt,
+            "wins": wins,
+            "loss": loss,
+            "win_rate": wr,
+            "kills": kills,
+            "deaths": deaths,
+            "kdr": kdr,
+            "adr": adr,
+            "hs_percent": hs_pct
+        }, db_path)
+
+def sync_steam_matches(db_path: str = DB_PATH) -> int:
+    """
+    Sincroniza apenas partidas novas da Steam via Leetify.
+    Para imediatamente assim que encontrar a primeira partida já conhecida no banco.
+    """
+    print("🎯 Sincronizando partidas novas da STEAM (Premier & MM) via Leetify...")
     total_saved = 0
 
     for nick, info in SQUAD_PLAYERS.items():
         pid = info['player_id']
         sid = info['steam_id']
-        print(f"\n🔍 Buscando partidas de {nick} (Steam: {sid})...")
-        
+
+        # Carrega partidas já conhecidas deste jogador
+        known_ids = get_known_match_ids(pid, db_path=db_path)
+
         matches = fetch_player_steam_matches(sid)
-        steam_matches = [m for m in matches if isinstance(m, dict) and m.get('data_source') in ('matchmaking', 'matchmaking_competitive', 'matchmaking_wingman')]
-        
+        steam_matches = [
+            m for m in matches 
+            if isinstance(m, dict) and m.get('data_source') in ('matchmaking', 'matchmaking_competitive', 'matchmaking_wingman')
+        ]
+
         if not steam_matches:
-            print(f"  [-] Nenhuma partida da Steam encontrada para {nick}.")
-            time.sleep(1.5)
+            print(f"  [-] {nick:10s} -> nenhuma partida encontrada.")
+            time.sleep(0.2)
             continue
 
-        player_month_matches = defaultdict(list)
-        p_count = 0
-
+        new_matches_to_save = []
         for raw_m in steam_matches:
             m_id = f"steam_{raw_m.get('id')}"
+
+            # Early exit: como Leetify lista em ordem cronológica decrescente (mais recente primeiro),
+            # assim que encontrar uma partida que já temos, todas as seguintes também já foram salvas.
+            if m_id in known_ids or str(m_id) in known_ids:
+                break
+
             month = raw_m.get('finished_at', '')[:7]
             if not month:
                 continue
@@ -187,10 +197,10 @@ def sync_steam_matches(db_path: str = DB_PATH):
             rounds_won = player_stat.get('rounds_won', 0)
             rounds_lost = player_stat.get('rounds_lost', 0)
             win = 1 if rounds_won > rounds_lost else 0
-            multis = player_stat.get('multi2k', 0) + player_stat.get('multi3k', 0) + player_stat.get('multi4k', 0) + player_stat.get('multi5k', 0)
 
             parsed_m = {
                 "match_id": m_id,
+                "player_id": pid,
                 "month": month,
                 "team_name_a": "Seu Time",
                 "score_a": rounds_won,
@@ -201,50 +211,32 @@ def sync_steam_matches(db_path: str = DB_PATH):
                 "rating_diff": 0,
                 "map": raw_m.get('map_name', ''),
                 "match_type": match_type,
+                "platform": "STEAM",
                 "kills": kills,
                 "deaths": deaths,
                 "adr": adr,
-                "hs_percent": hs_pct,
-                "multi_kills": multis
+                "hs_percent": hs_pct
             }
+            new_matches_to_save.append(parsed_m)
 
-            save_steam_match(parsed_m, pid, db_path)
-            player_month_matches[month].append(parsed_m)
-            p_count += 1
+        if new_matches_to_save:
+            save_matches(new_matches_to_save, db_path)
+            affected_months = {m["month"] for m in new_matches_to_save}
+            for m_str in affected_months:
+                recalculate_steam_monthly_stats(pid, m_str, db_path)
 
-        # Consolida estatísticas mensais da Steam para o jogador
-        for month, m_list in player_month_matches.items():
-            m_cnt = len(m_list)
-            wins = sum(x['win'] for x in m_list)
-            loss = m_cnt - wins
-            wr = round(wins / m_cnt * 100, 1) if m_cnt > 0 else 0.0
-            tot_kills = sum(x['kills'] for x in m_list)
-            tot_deaths = sum(x['deaths'] for x in m_list)
-            kdr = round(tot_kills / tot_deaths, 2) if tot_deaths > 0 else 0.0
-            avg_adr = round(sum(x['adr'] for x in m_list) / m_cnt, 1) if m_cnt > 0 else 0.0
-            tot_multis = sum(x['multi_kills'] for x in m_list)
-            avg_hs = round(sum(x['hs_percent'] for x in m_list) / m_cnt, 1) if m_cnt > 0 else 0.0
+            total_saved += len(new_matches_to_save)
+            print(f"  [+] {nick:10s} -> {len(new_matches_to_save)} nova(s) partida(s) adicionada(s)!")
+        else:
+            print(f"  [-] {nick:10s} -> em dia (0 novas partidas).")
 
-            save_steam_monthly_stats({
-                "player_id": pid,
-                "month": month,
-                "matches": m_cnt,
-                "wins": wins,
-                "loss": loss,
-                "win_rate": wr,
-                "kills": tot_kills,
-                "deaths": tot_deaths,
-                "kdr": kdr,
-                "adr": avg_adr,
-                "multi_kills": tot_multis,
-                "hs_percent": avg_hs
-            }, db_path)
+        time.sleep(0.2)
 
-        total_saved += p_count
-        print(f"  [+] {nick}: {p_count} partidas da Steam sincronizadas em {len(player_month_matches)} meses!")
-        time.sleep(2.0)
+    if total_saved > 0:
+        print(f"\n🎉 Sucesso! {total_saved} nova(s) partida(s) da Steam sincronizada(s)!")
+    else:
+        print(f"\n✨ Steam 100% atualizada! Nenhuma partida nova pendente.")
 
-    print(f"\n🎉 Sucesso! Total de {total_saved} registros de partidas da Steam sincronizados!")
     return total_saved
 
 if __name__ == "__main__":

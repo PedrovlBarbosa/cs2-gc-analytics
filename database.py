@@ -95,7 +95,16 @@ def get_known_match_ids(player_id: int, month = None, db_path: str = DB_PATH) ->
         cursor.execute("SELECT match_id FROM matches WHERE player_id = ?", (player_id,))
     rows = cursor.fetchall()
     conn.close()
-    return {row[0] for row in rows}
+    result = set()
+    for row in rows:
+        val = row[0]
+        result.add(val)
+        result.add(str(val))
+        try:
+            result.add(int(val))
+        except (ValueError, TypeError):
+            pass
+    return result
 
 def save_player(player: Dict[str, Any], db_path: str = DB_PATH):
     conn = get_connection(db_path)

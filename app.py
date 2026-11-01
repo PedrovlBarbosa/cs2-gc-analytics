@@ -128,10 +128,13 @@ with st.sidebar:
                 try:
                     from leetify_collector import sync_steam_matches
                     saved = sync_steam_matches()
-                    st.success(f"🎯 {saved} partidas Steam!")
-                    if has_local_config:
-                        from sync_now import push_to_github
-                        push_to_github()
+                    if saved > 0:
+                        st.success(f"🎯 {saved} nova(s) partida(s) Steam sincronizada(s)!")
+                        if has_local_config:
+                            from sync_now import push_to_github
+                            push_to_github()
+                    else:
+                        st.info("✅ Steam em dia (0 partidas novas)!")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
