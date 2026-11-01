@@ -238,7 +238,20 @@ def get_all_players(db_path: str = DB_PATH) -> pd.DataFrame:
     conn.close()
     return df
 
-def get_all_months(platform: str = "TODOS", db_path: str = DB_PATH) -> List[str]:
+def get_all_months(*args, **kwargs) -> List[str]:
+    """Retorna lista de meses distintos. Suporta db_path e platform em qualquer ordem."""
+    platform = kwargs.get("platform", "TODOS")
+    db_path = kwargs.get("db_path", DB_PATH)
+    if args:
+        if isinstance(args[0], str) and (args[0].endswith(".db") or "/" in args[0] or "\\" in args[0]):
+            db_path = args[0]
+            if len(args) > 1:
+                platform = args[1]
+        else:
+            platform = args[0]
+            if len(args) > 1:
+                db_path = args[1]
+                
     conn = get_connection(db_path)
     cursor = conn.cursor()
     if platform and platform.upper() != "TODOS":
@@ -249,7 +262,7 @@ def get_all_months(platform: str = "TODOS", db_path: str = DB_PATH) -> List[str]
     conn.close()
     return [r[0] for r in rows]
 
-def get_core_players_stats(month: Optional[str] = None, platform: str = "TODOS", db_path: str = DB_PATH) -> pd.DataFrame:
+def get_core_players_stats(month: Optional[str] = None, platform: str = "TODOS", db_path: str = DB_PATH, **kwargs) -> pd.DataFrame:
     """
     Retorna as estatísticas consolidadas dos 7 jogadores principais.
     Suporta filtro por mês e por plataforma ('TODOS', 'GC', 'STEAM').
@@ -306,7 +319,7 @@ def get_core_players_stats(month: Optional[str] = None, platform: str = "TODOS",
     conn.close()
     return df
 
-def get_core_squad_totals(month: Optional[str] = None, platform: str = "TODOS", db_path: str = DB_PATH) -> Dict[str, Any]:
+def get_core_squad_totals(month: Optional[str] = None, platform: str = "TODOS", db_path: str = DB_PATH, **kwargs) -> Dict[str, Any]:
     """Calcula os totais e médias somadas do conjunto dos 7 jogadores."""
     default_empty = {
         "players_count": 0,
@@ -391,7 +404,7 @@ def get_core_squad_totals(month: Optional[str] = None, platform: str = "TODOS", 
         "hitbox_legs": int(df["hitbox_legs"].sum())
     }
 
-def get_player_history(player_id: int, platform: str = "TODOS", db_path: str = DB_PATH) -> pd.DataFrame:
+def get_player_history(player_id: int, platform: str = "TODOS", db_path: str = DB_PATH, **kwargs) -> pd.DataFrame:
     conn = get_connection(db_path)
     conds = ["player_id = ?", "matches > 0"]
     params = [player_id]
@@ -421,7 +434,7 @@ def get_player_history(player_id: int, platform: str = "TODOS", db_path: str = D
     conn.close()
     return df
 
-def get_matches_by_month(month: Optional[str] = None, player_id: Optional[int] = None, platform: str = "TODOS", db_path: str = DB_PATH) -> pd.DataFrame:
+def get_matches_by_month(month: Optional[str] = None, player_id: Optional[int] = None, platform: str = "TODOS", db_path: str = DB_PATH, **kwargs) -> pd.DataFrame:
     conn = get_connection(db_path)
     conditions = []
     params = []

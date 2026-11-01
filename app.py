@@ -1,8 +1,16 @@
 import os
+import sys
+import time
+import importlib
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import database
+try:
+    importlib.reload(database)
+except Exception:
+    pass
 from database import (
     CORE_PLAYERS,
     get_all_months,
@@ -148,7 +156,10 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("🗓️ Filtro de Período")
-    available_months = ["Todo o Histórico (Acumulado)"] + get_all_months(platform=platform_filter)
+    try:
+        available_months = ["Todo o Histórico (Acumulado)"] + get_all_months(platform=platform_filter)
+    except TypeError:
+        available_months = ["Todo o Histórico (Acumulado)"] + get_all_months()
     selected_period = st.selectbox(
         "Selecione o Período:",
         options=available_months,
@@ -167,8 +178,12 @@ st.markdown(f"<div class='main-title'>CS2 Squad Analytics • Core 7</div>", uns
 st.markdown(f"<div class='sub-title'>Estatísticas de <b>KrannDy, Aquarista, Art, Cherki, Death, Kinha e mch</b> • Período: <b>{period_label}</b> • Plataforma: <b>{platform_tag}</b></div>", unsafe_allow_html=True)
 
 # Dados do Squad e Totais
-squad_df = get_core_players_stats(month=month_filter, platform=platform_filter)
-squad_totals = get_core_squad_totals(month=month_filter, platform=platform_filter)
+try:
+    squad_df = get_core_players_stats(month=month_filter, platform=platform_filter)
+    squad_totals = get_core_squad_totals(month=month_filter, platform=platform_filter)
+except TypeError:
+    squad_df = get_core_players_stats(month=month_filter)
+    squad_totals = get_core_squad_totals(month=month_filter)
 
 if squad_df.empty or not squad_totals:
     st.warning("⚠️ Nenhum dado encontrado para o período selecionado.")
@@ -482,7 +497,10 @@ with tab_individual:
         col_hist, col_hit = st.columns([2, 1])
         with col_hist:
             st.subheader(f"📈 Evolução Mês a Mês de {p['nick']}")
-            p_history = get_player_history(pid, platform=platform_filter)
+            try:
+                p_history = get_player_history(pid, platform=platform_filter)
+            except TypeError:
+                p_history = get_player_history(pid)
             if not p_history.empty:
                 fig_timeline = go.Figure()
                 fig_timeline.add_trace(go.Scatter(
@@ -555,7 +573,10 @@ with tab_maps:
             key="map_player_select"
         )
     target_map_pid = PLAYER_NAME_TO_ID.get(selected_map_player) if selected_map_player != "Todos do Squad" else None
-    matches_df = get_matches_by_month(month_filter, target_map_pid, platform=platform_filter)
+    try:
+        matches_df = get_matches_by_month(month_filter, target_map_pid, platform=platform_filter)
+    except TypeError:
+        matches_df = get_matches_by_month(month_filter, target_map_pid)
 
     if matches_df.empty:
         st.info("Nenhuma partida com registro de mapa encontrada para este período/filtro.")
@@ -607,7 +628,10 @@ with tab_matches:
             key="matches_player_select"
         )
     target_match_pid = PLAYER_NAME_TO_ID.get(selected_p_match) if selected_p_match != "Todos do Squad" else None
-    matches_df = get_matches_by_month(month_filter, target_match_pid, platform=platform_filter)
+    try:
+        matches_df = get_matches_by_month(month_filter, target_match_pid, platform=platform_filter)
+    except TypeError:
+        matches_df = get_matches_by_month(month_filter, target_match_pid)
     
     if matches_df.empty:
         st.info("Nenhuma partida listada para este período/filtro.")
