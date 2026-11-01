@@ -137,6 +137,29 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"Erro Steam: {e}")
 
+    with st.expander("📂 Importar Histórico Antigo (Steam)"):
+        st.caption("Importe partidas antigas de 2023/2024 a partir da página Steam GCPD.")
+        uploaded_file = st.file_uploader("Envie seu arquivo steam_matches.json ou .html da Steam:", type=["json", "html", "htm"])
+        if uploaded_file is not None:
+            if st.button("📥 Processar e Salvar no Banco", use_container_width=True):
+                with st.spinner("Processando partidas da Steam..."):
+                    try:
+                        from import_steam_data import parse_steam_json, parse_steam_gcpd_html, import_matches_into_db
+                        content = uploaded_file.read().decode("utf-8", errors="ignore")
+                        if uploaded_file.name.endswith(".json") or content.strip().startswith("[") or content.strip().startswith("{"):
+                            parsed = parse_steam_json(content)
+                        else:
+                            parsed = parse_steam_gcpd_html(content)
+                        saved = import_matches_into_db(parsed)
+                        st.success(f"🎉 Sucesso! {saved} partidas importadas para o banco!")
+                        if has_local_config:
+                            from sync_now import push_to_github
+                            push_to_github()
+                        time.sleep(1.5)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao importar: {e}")
+
     st.markdown("---")
     st.subheader("🎮 Plataforma")
     platform_option = st.radio(
