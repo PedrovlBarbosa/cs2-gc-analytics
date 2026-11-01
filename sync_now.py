@@ -1,4 +1,5 @@
 import time
+import subprocess
 from datetime import datetime
 from collector import load_config, GamersClubCollector
 from database import save_monthly_stats, save_matches, CORE_PLAYERS
@@ -13,7 +14,21 @@ TARGET_PLAYERS = {
     'mch': 89302
 }
 
-def sync_recent(months_count=2):
+def push_to_github():
+    """Envia o banco de dados atualizado para o GitHub para atualizar o link dos amigos."""
+    try:
+        subprocess.run(["git", "add", "gc_stats.db"], check=True, capture_output=True)
+        diff = subprocess.run(["git", "diff", "--cached", "--name-only"], capture_output=True, text=True)
+        if "gc_stats.db" in diff.stdout:
+            subprocess.run(["git", "commit", "-m", "chore: sync latest GC matches [skip ci]"], check=True, capture_output=True)
+            subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True)
+            return True
+        return False
+    except Exception as e:
+        print(f"Aviso ao enviar para o GitHub: {e}")
+        return False
+
+def sync_recent(months_count=2, auto_push=True):
     """Atualiza rapidamente apenas o mês atual e o anterior para os 7 jogadores."""
     cfg = load_config()
     collector = GamersClubCollector(cfg)
@@ -35,8 +50,13 @@ def sync_recent(months_count=2):
         if matches:
             save_matches(matches)
 
-    return len(recent_months), updated_count
+    pushed = False
+    if auto_push:
+        pushed = push_to_github()
+
+    return len(recent_months), updated_count, pushed
 
 if __name__ == "__main__":
-    m_count, up_count = sync_recent(2)
-    print(f"Sincronização concluída! {m_count} meses recentes verificados, {up_count} registros de jogadores atualizados.")
+    m_count, up_count, pushed = sync_recent(2, auto_push=True)
+    status_cloud = "e publicado no GitHub para seus amigos!" if pushed else "localmente."
+    print(f"Sincronização concluída! {m_count} meses verificados, {up_count} registros atualizados {status_cloud}")

@@ -94,11 +94,14 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("⚡ Sincronização")
     if st.button("🔄 Sincronizar Jogos Agora", use_container_width=True, type="primary"):
-        with st.spinner("Buscando partidas recentes na Gamers Club..."):
+        with st.spinner("Buscando partidas na Gamers Club e atualizando..."):
             try:
                 from sync_now import sync_recent
-                m_cnt, up_cnt = sync_recent(2)
-                st.success(f"✅ Atualizado! {up_cnt} registros sincronizados.")
+                m_cnt, up_cnt, pushed = sync_recent(2, auto_push=True)
+                if pushed:
+                    st.success(f"✅ Atualizado! {up_cnt} estatísticas sincronizadas e publicadas para os amigos!")
+                else:
+                    st.success(f"✅ Atualizado! {up_cnt} estatísticas sincronizadas localmente.")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao sincronizar: {e}")
