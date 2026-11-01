@@ -107,11 +107,15 @@ with st.sidebar:
             with st.spinner("Buscando partidas na Gamers Club e atualizando..."):
                 try:
                     from sync_now import sync_recent
-                    m_cnt, up_cnt, pushed = sync_recent(2, auto_push=has_local_config)
-                    if pushed:
-                        st.success(f"✅ Atualizado! {up_cnt} estatísticas sincronizadas e publicadas para os amigos!")
+                    m_cnt, up_cnt, pushed = sync_recent(auto_push=has_local_config)
+                    if up_cnt > 0:
+                        if pushed:
+                            st.success(f"🔥 Sucesso! {up_cnt} nova(s) partida(s) sincronizada(s) e publicada(s) para os amigos!")
+                        else:
+                            st.success(f"🔥 Sucesso! {up_cnt} nova(s) partida(s) sincronizada(s) com sucesso!")
                     else:
-                        st.success(f"✅ Atualizado! {up_cnt} estatísticas sincronizadas com sucesso.")
+                        st.info("✅ Seu histórico já está 100% atualizado! Nenhuma nova partida pendente.")
+                    time.sleep(1)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao sincronizar: {e}")

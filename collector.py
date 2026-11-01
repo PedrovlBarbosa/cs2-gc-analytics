@@ -192,6 +192,45 @@ class GamersClubCollector:
             print(f"Erro ao buscar stats do jogador {pid} para {month}: {e}")
         return None
 
+    def fetch_new_matches(self, pid: int, month: str, known_ids: set) -> List[Dict[str, Any]]:
+        """Busca apenas as partidas novas que ainda não estão salvas no banco (para na primeira partida já conhecida)."""
+        new_matches = []
+        page = 0
+        hit_known = False
+        while not hit_known:
+            url = f"https://gamersclub.com.br/api/box/historyMatchesPage/{pid}/{month}/{page}"
+            try:
+                resp = self.session.get(url, timeout=15)
+                if resp.status_code != 200:
+                    break
+                data = resp.json()
+                page_matches = data.get("monthMatches", [])
+                if not page_matches:
+                    break
+                for m in page_matches:
+                    m_id = m.get("id")
+                    if m_id in known_ids:
+                        hit_known = True
+                        break
+                    new_matches.append({
+                        "match_id": m_id,
+                        "player_id": pid,
+                        "month": month,
+                        "team_name_a": m.get("teamNameA", ""),
+                        "score_a": m.get("scoreA", 0),
+                        "team_name_b": m.get("teamNameB", ""),
+                        "score_b": m.get("scoreB", 0),
+                        "win": m.get("win", 0),
+                        "rating_player": m.get("ratingPlayer", 0),
+                        "rating_diff": m.get("ratingDiff", 0),
+                        "map": m.get("map", ""),
+                        "match_type": m.get("type", "lobby")
+                    })
+                page += 1
+            except Exception:
+                break
+        return new_matches
+
     def fetch_matches_for_month(self, pid: int, month: str) -> List[Dict[str, Any]]:
         """Busca todas as partidas de um mês paginadas."""
         matches_result = []

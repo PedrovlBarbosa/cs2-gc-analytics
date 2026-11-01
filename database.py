@@ -199,6 +199,18 @@ def save_matches(matches_list: List[Dict[str, Any]], db_path: str = DB_PATH):
     conn.commit()
     conn.close()
 
+def get_known_match_ids(player_id: int, month = None, db_path: str = DB_PATH) -> set:
+    """Retorna o conjunto de IDs de partidas já salvas no banco para o jogador."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    if month:
+        cursor.execute("SELECT match_id FROM matches WHERE player_id = ? AND month = ?", (player_id, month))
+    else:
+        cursor.execute("SELECT match_id FROM matches WHERE player_id = ?", (player_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return {row[0] for row in rows}
+
 def get_all_players(db_path: str = DB_PATH) -> pd.DataFrame:
     conn = get_connection(db_path)
     df = pd.read_sql_query("SELECT * FROM players ORDER BY is_main_user DESC, nick ASC", conn)
