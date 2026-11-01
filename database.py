@@ -294,9 +294,35 @@ def get_core_players_stats(month: Optional[str] = None, db_path: str = DB_PATH) 
 
 def get_core_squad_totals(month: Optional[str] = None, db_path: str = DB_PATH) -> Dict[str, Any]:
     """Calcula os totais e médias somadas do conjunto dos 7 jogadores."""
+    default_empty = {
+        "players_count": 0,
+        "unique_matches": 0,
+        "unique_wins": 0,
+        "unique_loss": 0,
+        "unique_win_rate": 0.0,
+        "total_matches": 0,
+        "total_wins": 0,
+        "total_loss": 0,
+        "win_rate": 0.0,
+        "total_participations": 0,
+        "total_kills": 0,
+        "total_deaths": 0,
+        "kdr": 0.0,
+        "adr": 0.0,
+        "first_kills": 0,
+        "multi_kills": 0,
+        "bomb_plants": 0,
+        "bomb_defuses": 0,
+        "hitbox_head": 0,
+        "hitbox_chest": 0,
+        "hitbox_stomach": 0,
+        "hitbox_arms": 0,
+        "hitbox_legs": 0
+    }
+
     df = get_core_players_stats(month=month, db_path=db_path)
     if df.empty:
-        return {}
+        return default_empty
 
     conn = get_connection(db_path)
     if month and month != "Todos":
@@ -307,12 +333,12 @@ def get_core_squad_totals(month: Optional[str] = None, db_path: str = DB_PATH) -
         u_df = pd.read_sql_query(q, conn)
     conn.close()
 
-    unique_matches = len(u_df)
-    unique_wins = int(u_df["win"].sum()) if unique_matches > 0 else 0
+    total_matches_participations = int(df["matches"].sum())
+    unique_matches = len(u_df) if not u_df.empty else total_matches_participations
+    unique_wins = int(u_df["win"].sum()) if not u_df.empty else int(df["wins"].sum())
     unique_loss = unique_matches - unique_wins
     unique_win_rate = round((unique_wins / unique_matches * 100), 1) if unique_matches > 0 else 0.0
 
-    total_matches_participations = int(df["matches"].sum())
     total_kills = int(df["kills"].sum())
     total_deaths = int(df["deaths"].sum())
     kdr = round(total_kills / total_deaths, 2) if total_deaths > 0 else 0.0
@@ -326,6 +352,10 @@ def get_core_squad_totals(month: Optional[str] = None, db_path: str = DB_PATH) -
         "unique_wins": unique_wins,
         "unique_loss": unique_loss,
         "unique_win_rate": unique_win_rate,
+        "total_matches": unique_matches,
+        "total_wins": unique_wins,
+        "total_loss": unique_loss,
+        "win_rate": unique_win_rate,
         "total_participations": total_matches_participations,
         "total_kills": total_kills,
         "total_deaths": total_deaths,

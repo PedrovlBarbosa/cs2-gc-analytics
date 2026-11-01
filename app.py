@@ -161,20 +161,35 @@ with tab_squad_totals:
     st.subheader(f"📊 Totais Consolidados do Conjunto dos 7 Jogadores ({period_label})")
     st.caption("Soma e médias acumuladas de todas as partidas disputadas pelo grupo.")
     
+    # Extrai valores de forma segura protegida contra KeyError
+    u_matches = squad_totals.get("unique_matches", squad_totals.get("total_matches", 0))
+    u_wins = squad_totals.get("unique_wins", squad_totals.get("total_wins", 0))
+    u_loss = squad_totals.get("unique_loss", squad_totals.get("total_loss", 0))
+    u_wr = squad_totals.get("unique_win_rate", squad_totals.get("win_rate", 0.0))
+    tot_part = squad_totals.get("total_participations", u_matches)
+    tot_kills = squad_totals.get("total_kills", 0)
+    tot_deaths = squad_totals.get("total_deaths", 0)
+    s_kdr = squad_totals.get("kdr", 0.0)
+    s_adr = squad_totals.get("adr", 0.0)
+    s_first = squad_totals.get("first_kills", 0)
+    s_multi = squad_totals.get("multi_kills", 0)
+    s_plants = squad_totals.get("bomb_plants", 0)
+    s_defuses = squad_totals.get("bomb_defuses", 0)
+    
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         st.markdown(f"""
         <div class='metric-card'>
             <div class='metric-title'>Partidas do Time</div>
-            <div class='metric-value'>{squad_totals['unique_matches']:,}</div>
-            <div class='metric-sub'>{squad_totals['unique_wins']:,}V - {squad_totals['unique_loss']:,}D ({squad_totals['total_participations']:,} indiv.)</div>
+            <div class='metric-value'>{u_matches:,}</div>
+            <div class='metric-sub'>{u_wins:,}V - {u_loss:,}D ({tot_part:,} indiv.)</div>
         </div>
         """, unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
         <div class='metric-card'>
             <div class='metric-title'>Win Rate do Time</div>
-            <div class='metric-value'>{squad_totals['unique_win_rate']:.1f}%</div>
+            <div class='metric-value'>{u_wr:.1f}%</div>
             <div class='metric-sub'>Taxa de Vitória Real</div>
         </div>
         """, unsafe_allow_html=True)
@@ -182,15 +197,15 @@ with tab_squad_totals:
         st.markdown(f"""
         <div class='metric-card'>
             <div class='metric-title'>K/D Coletivo</div>
-            <div class='metric-value'>{squad_totals['kdr']:.2f}</div>
-            <div class='metric-sub'>{squad_totals['total_kills']:,} Kills / {squad_totals['total_deaths']:,} D</div>
+            <div class='metric-value'>{s_kdr:.2f}</div>
+            <div class='metric-sub'>{tot_kills:,} Kills / {tot_deaths:,} D</div>
         </div>
         """, unsafe_allow_html=True)
     with c4:
         st.markdown(f"""
         <div class='metric-card'>
             <div class='metric-title'>ADR Médio do Squad</div>
-            <div class='metric-value'>{squad_totals['adr']:.1f}</div>
+            <div class='metric-value'>{s_adr:.1f}</div>
             <div class='metric-sub'>Dano Médio / Round</div>
         </div>
         """, unsafe_allow_html=True)
@@ -198,7 +213,7 @@ with tab_squad_totals:
         st.markdown(f"""
         <div class='metric-card'>
             <div class='metric-title'>First Kills (Opening)</div>
-            <div class='metric-value'>{squad_totals['first_kills']:,}</div>
+            <div class='metric-value'>{s_first:,}</div>
             <div class='metric-sub'>Primeiras Kills</div>
         </div>
         """, unsafe_allow_html=True)
@@ -206,7 +221,7 @@ with tab_squad_totals:
         st.markdown(f"""
         <div class='metric-card'>
             <div class='metric-title'>Multi Kills</div>
-            <div class='metric-value'>{squad_totals['multi_kills']:,}</div>
+            <div class='metric-value'>{s_multi:,}</div>
             <div class='metric-sub'>2k, 3k, 4k e Aces</div>
         </div>
         """, unsafe_allow_html=True)
@@ -221,7 +236,7 @@ with tab_squad_totals:
             st.markdown(f"""
             <div class='metric-card'>
                 <div class='metric-title'>Bombas Plantadas</div>
-                <div class='metric-value' style='color:#f59e0b;'>{squad_totals['bomb_plants']:,}</div>
+                <div class='metric-value' style='color:#f59e0b;'>{s_plants:,}</div>
                 <div class='metric-sub'>Plantadas pelo Squad</div>
             </div>
             """, unsafe_allow_html=True)
@@ -229,7 +244,7 @@ with tab_squad_totals:
             st.markdown(f"""
             <div class='metric-card'>
                 <div class='metric-title'>Bombas Defusadas</div>
-                <div class='metric-value' style='color:#10b981;'>{squad_totals['bomb_defuses']:,}</div>
+                <div class='metric-value' style='color:#10b981;'>{s_defuses:,}</div>
                 <div class='metric-sub'>Defuses Realizados</div>
             </div>
             """, unsafe_allow_html=True)
