@@ -3,16 +3,17 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from database import (
+    CORE_PLAYERS,
     get_all_months,
-    get_all_players,
-    get_monthly_summary,
+    get_core_players_stats,
+    get_core_squad_totals,
     get_player_history,
     get_matches_by_month
 )
 
 # Configuração da Página
 st.set_page_config(
-    page_title="CS2 - Gamers Club Analytics",
+    page_title="CS2 - Squad Analytics",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -21,23 +22,23 @@ st.set_page_config(
 # Estilização CSS Moderna com tema Gamer
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.2rem;
+    .main-title {
+        font-size: 2.3rem;
         font-weight: 800;
         background: linear-gradient(90deg, #ff7700, #ffaa00);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 0.2rem;
     }
-    .sub-header {
-        color: #9ca3af;
+    .sub-title {
+        color: #94a3b8;
         font-size: 1.05rem;
         margin-bottom: 1.5rem;
     }
     .metric-card {
-        background: #1e222d;
-        border: 1px solid #2e3546;
-        border-radius: 10px;
+        background: #181d28;
+        border: 1px solid #283144;
+        border-radius: 12px;
         padding: 16px;
         text-align: center;
         box-shadow: 0 4px 6px rgba(0,0,0,0.3);
@@ -46,11 +47,11 @@ st.markdown("""
         font-size: 0.85rem;
         color: #94a3b8;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 0.8px;
         font-weight: 600;
     }
     .metric-value {
-        font-size: 1.8rem;
+        font-size: 1.85rem;
         font-weight: 800;
         color: #f8fafc;
         margin-top: 4px;
@@ -62,294 +63,418 @@ st.markdown("""
     .highlight-card {
         background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
         border-left: 4px solid #f97316;
-        padding: 12px 18px;
+        padding: 14px 18px;
         border-radius: 8px;
         margin-bottom: 15px;
+    }
+    .squad-badge {
+        display: inline-block;
+        background: rgba(255, 119, 0, 0.15);
+        color: #ff9933;
+        border: 1px solid rgba(255, 119, 0, 0.4);
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-right: 6px;
+        margin-bottom: 6px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Carrega jogadores e meses
-players_df = get_all_players()
-available_months = get_all_months()
-
-if players_df.empty or not available_months:
-    st.warning("⚠️ Nenhum dado encontrado no banco de dados. Execute primeiro o coletor: `python collector.py`")
-    st.stop()
-
-# Jogador principal
-main_player_row = players_df[players_df["is_main_user"] == 1]
-main_nick = main_player_row.iloc[0]["nick"] if not main_player_row.empty else "KrannDy"
-main_pid = int(main_player_row.iloc[0]["player_id"]) if not main_player_row.empty else 108698
+# Lista de meses disponíveis
+available_months = ["Todo o Histórico (Acumulado)"] + get_all_months()
 
 # Sidebar
 with st.sidebar:
-    st.image("https://gcv1-assets.gamersclub.com.br/assets/images/perfil/icon-lobby.png", width=60)
-    st.title("GC Analytics")
-    st.caption(f"Painel de Estatísticas CS2 • **{main_nick}**")
+    st.image("https://gcv1-assets.gamersclub.com.br/assets/images/perfil/icon-lobby.png", width=65)
+    st.title("Squad Analytics")
+    st.caption("Painel Exclusivo dos 7 Jogadores Principais")
     
     st.markdown("---")
     st.subheader("🗓️ Filtro de Período")
-    
-    selected_month = st.selectbox(
-        "Selecione o Mês:",
+    selected_period = st.selectbox(
+        "Selecione o Período:",
         options=available_months,
-        index=0 if len(available_months) > 0 else 0
+        index=0
     )
-    
+    month_filter = None if selected_period == "Todo o Histórico (Acumulado)" else selected_period
+
     st.markdown("---")
-    st.markdown("### 👥 Squad Cadastrado")
-    st.caption(f"Total de {len(players_df)} jogadores rastreados (você + {len(players_df)-1} companheiros).")
-    
-    with st.expander("Ver lista de jogadores"):
-        for _, p in players_df.iterrows():
-            tag = "🌟 (Você)" if p["is_main_user"] == 1 else ""
-            st.write(f"- **{p['nick']}** (Lvl {p['level'] or '?'}) {tag}")
+    st.markdown("### 🏆 Core Squad (7 Jogadores)")
+    for nick in CORE_PLAYERS:
+        st.markdown(f"<span class='squad-badge'>🎮 {nick}</span>", unsafe_allow_html=True)
 
-# Cabeçalho Principal
-st.markdown(f"<div class='main-header'>Gamers Club Dashboard - CS2</div>", unsafe_allow_html=True)
-st.markdown(f"<div class='sub-header'>Análise mensal de desempenho individual e dos companheiros de equipe • Mês selecionado: <b>{selected_month}</b></div>", unsafe_allow_html=True)
+# Título Principal
+period_label = "Todo o Histórico Consolidado" if not month_filter else f"Mês: {month_filter}"
+st.markdown(f"<div class='main-title'>CS2 Squad Analytics • Core 7</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='sub-title'>Estatísticas individuais e consolidadas de <b>KrannDy, Aquarista, Art, Cherki, Death, Kinha e mch</b> • Período: <b>{period_label}</b></div>", unsafe_allow_html=True)
 
-# Abas do Dashboard
-tab_overview, tab_squad, tab_maps, tab_history = st.tabs([
-    "📊 Visão Geral do Jogador",
-    "👥 Comparativo de Companheiros",
+# Dados do Squad e Totais
+squad_df = get_core_players_stats(month=month_filter)
+squad_totals = get_core_squad_totals(month=month_filter)
+
+if squad_df.empty or not squad_totals:
+    st.warning("⚠️ Nenhum dado encontrado para o período selecionado.")
+    st.stop()
+
+# Abas Principais
+tab_squad_totals, tab_comparative, tab_individual, tab_maps, tab_matches = st.tabs([
+    "🔥 Conjunto de Todos (Squad)",
+    "⚔️ Comparativo dos 7",
+    "👤 Perfil Individual",
     "🗺️ Análise de Mapas",
-    "📜 Partidas do Mês"
+    "📜 Partidas Recentes"
 ])
 
-# ---------------------------------------------------------
-# TAB 1: VISÃO GERAL DO JOGADOR PRINCIPAL
-# ---------------------------------------------------------
-with tab_overview:
-    summary_df = get_monthly_summary(selected_month)
-    user_row = summary_df[summary_df["player_id"] == main_pid]
+# -----------------------------------------------------------------------------
+# TAB 1: CONJUNTO DE TODOS (SQUAD COLETIVO)
+# -----------------------------------------------------------------------------
+with tab_squad_totals:
+    st.subheader(f"📊 Totais Consolidados do Conjunto dos 7 Jogadores ({period_label})")
+    st.caption("Soma e médias acumuladas de todas as partidas disputadas pelo grupo.")
     
-    if user_row.empty:
-        st.info(f"Sem partidas registradas para {main_nick} em {selected_month}.")
-    else:
-        u = user_row.iloc[0]
+    # Linha 1 de métricas coletivas
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    with c1:
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-title'>Jogos no Conjunto</div>
+            <div class='metric-value'>{squad_totals['total_matches']:,}</div>
+            <div class='metric-sub'>{squad_totals['total_wins']:,}V - {squad_totals['total_loss']:,}D</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-title'>Win Rate do Time</div>
+            <div class='metric-value'>{squad_totals['win_rate']:.1f}%</div>
+            <div class='metric-sub'>Taxa de Vitória Geral</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c3:
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-title'>K/D Coletivo</div>
+            <div class='metric-value'>{squad_totals['kdr']:.2f}</div>
+            <div class='metric-sub'>{squad_totals['total_kills']:,} Kills / {squad_totals['total_deaths']:,} D</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c4:
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-title'>ADR Médio do Squad</div>
+            <div class='metric-value'>{squad_totals['adr']:.1f}</div>
+            <div class='metric-sub'>Dano Médio / Round</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c5:
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-title'>First Kills (Opening)</div>
+            <div class='metric-value'>{squad_totals['first_kills']:,}</div>
+            <div class='metric-sub'>Primeiras Kills</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c6:
+        st.markdown(f"""
+        <div class='metric-card'>
+            <div class='metric-title'>Multi Kills</div>
+            <div class='metric-value'>{squad_totals['multi_kills']:,}</div>
+            <div class='metric-sub'>2k, 3k, 4k e Aces</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Linha 2 de métricas (Objetivos: C4 e Hitbox)
+    col_obj1, col_obj2 = st.columns([1, 1])
+    with col_obj1:
+        st.markdown("#### 💣 Objetivos de C4 Coletivos")
+        o1, o2 = st.columns(2)
+        with o1:
+            st.markdown(f"""
+            <div class='metric-card'>
+                <div class='metric-title'>Bombas Plantadas</div>
+                <div class='metric-value' style='color:#f59e0b;'>{squad_totals['bomb_plants']:,}</div>
+                <div class='metric-sub'>Plantadas pelo Squad</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with o2:
+            st.markdown(f"""
+            <div class='metric-card'>
+                <div class='metric-title'>Bombas Defusadas</div>
+                <div class='metric-value' style='color:#10b981;'>{squad_totals['bomb_defuses']:,}</div>
+                <div class='metric-sub'>Defuses Realizados</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    with col_obj2:
+        st.markdown("#### 🎯 Distribuição de Tiros do Squad (Hitbox Total)")
+        hit_data = {
+            "Região": ["Cabeça", "Peito", "Estômago", "Braços", "Pernas"],
+            "Tiros": [
+                squad_totals['hitbox_head'],
+                squad_totals['hitbox_chest'],
+                squad_totals['hitbox_stomach'],
+                squad_totals['hitbox_arms'],
+                squad_totals['hitbox_legs']
+            ]
+        }
+        hit_df = pd.DataFrame(hit_data)
+        if hit_df["Tiros"].sum() > 0:
+            fig_hit = px.pie(
+                hit_df, values="Tiros", names="Região",
+                hole=0.45,
+                color_discrete_sequence=['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ef4444']
+            )
+            fig_hit.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', height=240, margin=dict(l=10, r=10, t=10, b=10))
+            st.plotly_chart(fig_hit, use_container_width=True)
+        else:
+            st.info("Sem registro de Hitbox para este período.")
+
+# -----------------------------------------------------------------------------
+# TAB 2: COMPARATIVO DOS 7 JOGADORES
+# -----------------------------------------------------------------------------
+with tab_comparative:
+    st.subheader(f"⚔️ Comparativo Direto entre os 7 Jogadores ({period_label})")
+
+    # Destaques do Grupo
+    top_kills = squad_df.loc[squad_df['kills'].idxmax()]
+    top_adr = squad_df.loc[squad_df['adr'].idxmax()]
+    top_kdr = squad_df.loc[squad_df['kdr'].idxmax()]
+    top_first = squad_df.loc[squad_df['first_kills'].idxmax()]
+
+    h1, h2, h3, h4 = st.columns(4)
+    with h1:
+        st.markdown(f"""
+        <div class='highlight-card'>
+            <b>👑 Top Fragger:</b><br>
+            <span style='font-size:1.3rem; font-weight:700; color:#ff7700;'>{top_kills['nick']}</span> — <b>{top_kills['kills']:,}</b> Kills
+        </div>
+        """, unsafe_allow_html=True)
+    with h2:
+        st.markdown(f"""
+        <div class='highlight-card'>
+            <b>🔥 Maior ADR (Dano Médio):</b><br>
+            <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{top_adr['nick']}</span> — <b>{top_adr['adr']:.1f}</b> ADR
+        </div>
+        """, unsafe_allow_html=True)
+    with h3:
+        st.markdown(f"""
+        <div class='highlight-card'>
+            <b>🎯 Maior K/D Ratio:</b><br>
+            <span style='font-size:1.3rem; font-weight:700; color:#10b981;'>{top_kdr['nick']}</span> — <b>{top_kdr['kdr']:.2f}</b> KDR
+        </div>
+        """, unsafe_allow_html=True)
+    with h4:
+        st.markdown(f"""
+        <div class='highlight-card'>
+            <b>⚡ Rei do First Kill:</b><br>
+            <span style='font-size:1.3rem; font-weight:700; color:#a855f7;'>{top_first['nick']}</span> — <b>{top_first['first_kills']:,}</b> Aberturas
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Gráficos Comparativos Lado a Lado
+    g_col1, g_col2 = st.columns(2)
+    with g_col1:
+        fig_adr = px.bar(
+            squad_df.sort_values(by="adr", ascending=True),
+            x="adr", y="nick", orientation='h',
+            title="Dano Médio por Round (ADR)",
+            color="adr", color_continuous_scale="Oranges", text="adr"
+        )
+        fig_adr.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+        fig_adr.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', height=350)
+        st.plotly_chart(fig_adr, use_container_width=True)
+
+    with g_col2:
+        fig_kdr = px.bar(
+            squad_df.sort_values(by="kdr", ascending=True),
+            x="kdr", y="nick", orientation='h',
+            title="K/D Ratio (KDR Geral)",
+            color="kdr", color_continuous_scale="Blues", text="kdr"
+        )
+        fig_kdr.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+        fig_kdr.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', height=350)
+        st.plotly_chart(fig_kdr, use_container_width=True)
+
+    g_col3, g_col4 = st.columns(2)
+    with g_col3:
+        fig_kills = px.bar(
+            squad_df.sort_values(by="kills", ascending=True),
+            x="kills", y="nick", orientation='h',
+            title="Total de Abates (Kills)",
+            color="kills", color_continuous_scale="Viridis", text="kills"
+        )
+        fig_kills.update_traces(texttemplate='%{text:,}', textposition='outside')
+        fig_kills.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', height=350)
+        st.plotly_chart(fig_kills, use_container_width=True)
+
+    with g_col4:
+        fig_fk = px.bar(
+            squad_df.sort_values(by="first_kills", ascending=True),
+            x="first_kills", y="nick", orientation='h',
+            title="Primeiras Kills (First Kills / Opening)",
+            color="first_kills", color_continuous_scale="Sunsetdark", text="first_kills"
+        )
+        fig_fk.update_traces(texttemplate='%{text:,}', textposition='outside')
+        fig_fk.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', height=350)
+        st.plotly_chart(fig_fk, use_container_width=True)
+
+    # Tabela Completa de Classificação
+    st.markdown("### 📋 Tabela Geral Comparativa dos 7 Jogadores")
+    cols_display = [
+        "nick", "matches", "wins", "loss", "win_rate", "kdr", "adr",
+        "kills", "deaths", "first_kills", "multi_kills", "bomb_plants", "bomb_defuses", "hs_percent", "kast_percent"
+    ]
+    renamed = {
+        "nick": "Jogador",
+        "matches": "Partidas",
+        "wins": "Vitórias",
+        "loss": "Derrotas",
+        "win_rate": "Win Rate (%)",
+        "kdr": "K/D",
+        "adr": "ADR",
+        "kills": "Kills",
+        "deaths": "Mortes",
+        "first_kills": "First Kills",
+        "multi_kills": "Multi Kills",
+        "bomb_plants": "Plants",
+        "bomb_defuses": "Defuses",
+        "hs_percent": "HS %",
+        "kast_percent": "KAST %"
+    }
+    styled_df = squad_df[cols_display].rename(columns=renamed).reset_index(drop=True)
+    st.dataframe(styled_df, use_container_width=True)
+
+# -----------------------------------------------------------------------------
+# TAB 3: PERFIL INDIVIDUAL DETALHADO
+# -----------------------------------------------------------------------------
+with tab_individual:
+    selected_player_nick = st.selectbox("Selecione o Jogador para ver o Perfil Detalhado:", options=CORE_PLAYERS, index=0)
+    
+    player_row = squad_df[squad_df["nick"] == selected_player_nick]
+    if not player_row.empty:
+        p = player_row.iloc[0]
+        pid = int(p["player_id"])
+
+        st.markdown(f"### Perfil de **{p['nick']}** ({period_label})")
         
-        # Cards de Métricas Principais
-        col1, col2, col3, col4, col5, col6 = st.columns(6)
-        
-        with col1:
+        # Cards de estatísticas individuais
+        p1, p2, p3, p4, p5, p6 = st.columns(6)
+        with p1:
             st.markdown(f"""
             <div class='metric-card'>
                 <div class='metric-title'>Partidas</div>
-                <div class='metric-value'>{int(u['matches'])}</div>
-                <div class='metric-sub'>{int(u['wins'])}V - {int(u['loss'])}D</div>
+                <div class='metric-value'>{int(p['matches']):,}</div>
+                <div class='metric-sub'>{int(p['wins']):,}V - {int(p['loss']):,}D</div>
             </div>
             """, unsafe_allow_html=True)
-            
-        with col2:
+        with p2:
             st.markdown(f"""
             <div class='metric-card'>
                 <div class='metric-title'>Win Rate</div>
-                <div class='metric-value'>{u['win_rate']:.1f}%</div>
+                <div class='metric-value'>{p['win_rate']:.1f}%</div>
                 <div class='metric-sub'>Taxa de Vitória</div>
             </div>
             """, unsafe_allow_html=True)
-            
-        with col3:
+        with p3:
             st.markdown(f"""
             <div class='metric-card'>
-                <div class='metric-title'>KDR</div>
-                <div class='metric-value'>{u['kdr']:.2f}</div>
-                <div class='metric-sub'>Kills / Deaths</div>
+                <div class='metric-title'>K/D Ratio</div>
+                <div class='metric-value'>{p['kdr']:.2f}</div>
+                <div class='metric-sub'>{int(p['kills']):,}K / {int(p['deaths']):,}D</div>
             </div>
             """, unsafe_allow_html=True)
-            
-        with col4:
+        with p4:
             st.markdown(f"""
             <div class='metric-card'>
                 <div class='metric-title'>ADR Médio</div>
-                <div class='metric-value'>{u['adr']:.1f}</div>
+                <div class='metric-value'>{p['adr']:.1f}</div>
                 <div class='metric-sub'>Dano por Round</div>
             </div>
             """, unsafe_allow_html=True)
-            
-        with col5:
+        with p5:
             st.markdown(f"""
             <div class='metric-card'>
-                <div class='metric-title'>Kills / Mortes</div>
-                <div class='metric-value'>{int(u['kills'])}</div>
-                <div class='metric-sub'>{int(u['deaths'])} Mortes</div>
+                <div class='metric-title'>First Kills</div>
+                <div class='metric-value'>{int(p['first_kills']):,}</div>
+                <div class='metric-sub'>Multi Kills: {int(p['multi_kills']):,}</div>
             </div>
             """, unsafe_allow_html=True)
-            
-        with col6:
+        with p6:
             st.markdown(f"""
             <div class='metric-card'>
-                <div class='metric-title'>Headshot %</div>
-                <div class='metric-value'>{u['hs_percent']:.0f}%</div>
-                <div class='metric-sub'>KAST: {u['kast_percent']:.0f}%</div>
+                <div class='metric-title'>HS % / KAST</div>
+                <div class='metric-value'>{p['hs_percent']:.0f}%</div>
+                <div class='metric-sub'>KAST: {p['kast_percent']:.0f}%</div>
             </div>
             """, unsafe_allow_html=True)
-            
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Gráficos de Evolução
-        col_g1, col_g2 = st.columns([2, 1])
-        
-        with col_g1:
-            st.subheader("📈 Evolução Histórica Mês a Mês")
-            history_df = get_player_history(main_pid)
-            
-            if not history_df.empty:
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=history_df['month'], y=history_df['kdr'],
-                    mode='lines+markers', name='KDR',
-                    line=dict(color='#ff7700', width=3)
-                ))
-                fig.add_trace(go.Scatter(
-                    x=history_df['month'], y=history_df['adr'] / 100.0,
-                    mode='lines+markers', name='ADR (escala /100)',
-                    line=dict(color='#38bdf8', width=2, dash='dot')
-                ))
-                fig.add_trace(go.Scatter(
-                    x=history_df['month'], y=history_df['win_rate'] / 100.0,
-                    mode='lines+markers', name='Win Rate % (/100)',
-                    line=dict(color='#10b981', width=2)
-                ))
-                fig.update_layout(
-                    template='plotly_dark',
-                    plot_bgcolor='#111827',
-                    paper_bgcolor='#111827',
-                    margin=dict(l=20, r=20, t=30, b=20),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Sem dados suficientes para histórico temporal.")
 
-        with col_g2:
-            st.subheader("🎯 Ocorrência de Tiros (Hitbox)")
-            hitbox_data = {
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Gráfico histórico do jogador
+        col_hist, col_hit = st.columns([2, 1])
+        with col_hist:
+            st.subheader(f"📈 Evolução Mês a Mês de {p['nick']}")
+            p_history = get_player_history(pid)
+            if not p_history.empty:
+                fig_timeline = go.Figure()
+                fig_timeline.add_trace(go.Scatter(
+                    x=p_history['month'], y=p_history['kdr'],
+                    mode='lines+markers', name='KDR', line=dict(color='#ff7700', width=3)
+                ))
+                fig_timeline.add_trace(go.Scatter(
+                    x=p_history['month'], y=p_history['adr'] / 100.0,
+                    mode='lines+markers', name='ADR (/100)', line=dict(color='#38bdf8', width=2, dash='dot')
+                ))
+                fig_timeline.add_trace(go.Scatter(
+                    x=p_history['month'], y=p_history['win_rate'] / 100.0,
+                    mode='lines+markers', name='Win Rate (/100)', line=dict(color='#10b981', width=2)
+                ))
+                fig_timeline.update_layout(
+                    template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827',
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    margin=dict(l=20, r=20, t=30, b=20)
+                )
+                st.plotly_chart(fig_timeline, use_container_width=True)
+            else:
+                st.info("Sem histórico mensal disponível.")
+
+        with col_hit:
+            st.subheader(f"🎯 Hitbox de {p['nick']}")
+            p_hit_data = {
                 "Região": ["Cabeça", "Peito", "Estômago", "Braços", "Pernas"],
                 "Tiros": [
-                    u.get('hitbox_head', 0),
-                    u.get('hitbox_chest', 0),
-                    u.get('hitbox_stomach', 0),
-                    u.get('hitbox_arms', 0),
-                    u.get('hitbox_legs', 0)
+                    p.get('hitbox_head', 0),
+                    p.get('hitbox_chest', 0),
+                    p.get('hitbox_stomach', 0),
+                    p.get('hitbox_arms', 0),
+                    p.get('hitbox_legs', 0)
                 ]
             }
-            hit_df = pd.DataFrame(hitbox_data)
-            if hit_df["Tiros"].sum() > 0:
-                fig_hit = px.pie(
-                    hit_df, values="Tiros", names="Região",
-                    hole=0.45,
+            p_hit_df = pd.DataFrame(p_hit_data)
+            if p_hit_df["Tiros"].sum() > 0:
+                fig_p_hit = px.pie(
+                    p_hit_df, values="Tiros", names="Região", hole=0.45,
                     color_discrete_sequence=['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ef4444']
                 )
-                fig_hit.update_layout(
-                    template='plotly_dark',
-                    plot_bgcolor='#111827',
-                    paper_bgcolor='#111827',
-                    margin=dict(l=10, r=10, t=20, b=10)
-                )
-                st.plotly_chart(fig_hit, use_container_width=True)
+                fig_p_hit.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', margin=dict(l=10, r=10, t=20, b=10))
+                st.plotly_chart(fig_p_hit, use_container_width=True)
             else:
-                st.info("Dados de Hitbox não disponíveis para este mês.")
+                st.info("Sem registro de Hitbox para este jogador.")
 
-# ---------------------------------------------------------
-# TAB 2: COMPARATIVO DO SQUAD (COMPANHEIROS DE EQUIPE)
-# ---------------------------------------------------------
-with tab_squad:
-    st.subheader(f"👥 Comparativo de Desempenho no Mês: {selected_month}")
-    
-    squad_df = summary_df[summary_df["matches"] > 0].copy()
-    
-    if squad_df.empty:
-        st.info("Nenhum companheiro possui partidas registradas neste mês.")
-    else:
-        # Destaques do Mês
-        best_adr = squad_df.loc[squad_df['adr'].idxmax()]
-        best_kdr = squad_df.loc[squad_df['kdr'].idxmax()]
-        most_matches = squad_df.loc[squad_df['matches'].idxmax()]
-        
-        d1, d2, d3 = st.columns(3)
-        with d1:
-            st.markdown(f"""
-            <div class='highlight-card'>
-                <b>🔥 Maior Dano (Top ADR):</b><br>
-                <span style='font-size:1.3rem; font-weight:700; color:#ff7700;'>{best_adr['nick']}</span> — <b>{best_adr['adr']:.1f}</b> ADR ({int(best_adr['matches'])} partidas)
-            </div>
-            """, unsafe_allow_html=True)
-        with d2:
-            st.markdown(f"""
-            <div class='highlight-card'>
-                <b>🎯 Maior K/D Ratio:</b><br>
-                <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{best_kdr['nick']}</span> — <b>{best_kdr['kdr']:.2f}</b> KDR
-            </div>
-            """, unsafe_allow_html=True)
-        with d3:
-            st.markdown(f"""
-            <div class='highlight-card'>
-                <b>🎮 Mais Jogos no Mês:</b><br>
-                <span style='font-size:1.3rem; font-weight:700; color:#10b981;'>{most_matches['nick']}</span> — <b>{int(most_matches['matches'])}</b> jogos ({most_matches['win_rate']:.1f}% Winrate)
-            </div>
-            """, unsafe_allow_html=True)
-            
-        # Gráficos Comparativos
-        c_bar1, c_bar2 = st.columns(2)
-        with c_bar1:
-            fig_adr = px.bar(
-                squad_df.sort_values(by="adr", ascending=True),
-                x="adr", y="nick",
-                orientation='h',
-                title="Dano Médio por Round (ADR)",
-                color="adr",
-                color_continuous_scale="Oranges",
-                text="adr"
-            )
-            fig_adr.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-            fig_adr.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827')
-            st.plotly_chart(fig_adr, use_container_width=True)
-            
-        with c_bar2:
-            fig_kdr = px.bar(
-                squad_df.sort_values(by="kdr", ascending=True),
-                x="kdr", y="nick",
-                orientation='h',
-                title="Kill / Death Ratio (KDR)",
-                color="kdr",
-                color_continuous_scale="Blues",
-                text="kdr"
-            )
-            fig_kdr.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-            fig_kdr.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827')
-            st.plotly_chart(fig_kdr, use_container_width=True)
-
-        # Tabela Detalhada
-        st.markdown("### 📋 Tabela Geral de Estatísticas do Squad")
-        display_cols = ["nick", "matches", "wins", "loss", "win_rate", "kdr", "adr", "kills", "deaths", "hs_percent", "kast_percent"]
-        renamed_cols = {
-            "nick": "Jogador",
-            "matches": "Partidas",
-            "wins": "Vitórias",
-            "loss": "Derrotas",
-            "win_rate": "Win Rate (%)",
-            "kdr": "K/D",
-            "adr": "ADR",
-            "kills": "Kills",
-            "deaths": "Mortes",
-            "hs_percent": "HS %",
-            "kast_percent": "KAST %"
-        }
-        styled_table = squad_df[display_cols].rename(columns=renamed_cols).reset_index(drop=True)
-        st.dataframe(styled_table, use_container_width=True)
-
-# ---------------------------------------------------------
-# TAB 3: ANÁLISE DE MAPAS
-# ---------------------------------------------------------
+# -----------------------------------------------------------------------------
+# TAB 4: ANÁLISE DE MAPAS
+# -----------------------------------------------------------------------------
 with tab_maps:
-    st.subheader(f"🗺️ Desempenho por Mapa ({selected_month})")
-    matches_df = get_matches_by_month(selected_month, main_pid)
-    
+    st.subheader(f"🗺️ Desempenho por Mapa ({period_label})")
+    main_pid = 108698
+    matches_df = get_matches_by_month(month_filter, main_pid)
+
     if matches_df.empty:
-        st.info("Nenhuma partida com detalhes de mapa encontrada para este mês.")
+        st.info("Nenhuma partida com registro de mapa encontrada para este período.")
     else:
         map_stats = matches_df.groupby("map").agg(
             total=('match_id', 'count'),
@@ -358,8 +483,8 @@ with tab_maps:
         map_stats['losses'] = map_stats['total'] - map_stats['wins']
         map_stats['win_rate'] = (map_stats['wins'] / map_stats['total'] * 100).round(1)
         map_stats = map_stats.sort_values(by="total", ascending=False)
-        
-        m_col1, m_col2 = st.columns([1, 1])
+
+        m_col1, m_col2 = st.columns(2)
         with m_col1:
             fig_map_vol = px.bar(
                 map_stats, x="map", y=["wins", "losses"],
@@ -369,37 +494,34 @@ with tab_maps:
             )
             fig_map_vol.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827')
             st.plotly_chart(fig_map_vol, use_container_width=True)
-            
+
         with m_col2:
             fig_map_wr = px.bar(
                 map_stats, x="map", y="win_rate",
                 title="Taxa de Vitória (%) por Mapa",
-                color="win_rate",
-                color_continuous_scale="Tealgrn",
-                text="win_rate"
+                color="win_rate", color_continuous_scale="Tealgrn", text="win_rate"
             )
             fig_map_wr.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
             fig_map_wr.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', yaxis_range=[0, 105])
             st.plotly_chart(fig_map_wr, use_container_width=True)
 
-# ---------------------------------------------------------
-# TAB 4: PARTIDAS DO MÊS
-# ---------------------------------------------------------
-with tab_history:
-    st.subheader(f"📜 Histórico de Jogos do Mês ({selected_month})")
+# -----------------------------------------------------------------------------
+# TAB 5: PARTIDAS RECENTES
+# -----------------------------------------------------------------------------
+with tab_matches:
+    st.subheader(f"📜 Histórico de Partidas do Time ({period_label})")
+    matches_df = get_matches_by_month(month_filter, 108698)
     
-    matches_df = get_matches_by_month(selected_month, main_pid)
     if matches_df.empty:
-        st.info(f"Nenhuma partida listada para {selected_month}.")
+        st.info("Nenhuma partida listada para este período.")
     else:
-        # Formata resultado
-        matches_display = matches_df.copy()
-        matches_display["resultado"] = matches_display["win"].apply(lambda w: "🏆 Vitória" if w == 1 else "❌ Derrota")
-        matches_display["placar"] = matches_display.apply(lambda r: f"{r['score_a']} x {r['score_b']}", axis=1)
-        matches_display["diff"] = matches_display["rating_diff"].apply(lambda d: f"+{d}" if d > 0 else str(d))
-        
+        m_display = matches_df.copy()
+        m_display["resultado"] = m_display["win"].apply(lambda w: "🏆 Vitória" if w == 1 else "❌ Derrota")
+        m_display["placar"] = m_display.apply(lambda r: f"{r['score_a']} x {r['score_b']}", axis=1)
+        m_display["diff"] = m_display["rating_diff"].apply(lambda d: f"+{d}" if d > 0 else str(d))
+
         cols = ["match_id", "resultado", "map", "placar", "team_name_a", "team_name_b", "rating_player", "diff"]
-        rename_dict = {
+        renamed = {
             "match_id": "ID Partida",
             "resultado": "Resultado",
             "map": "Mapa",
@@ -409,4 +531,4 @@ with tab_history:
             "rating_player": "Rating Final",
             "diff": "Pontos (RP)"
         }
-        st.dataframe(matches_display[cols].rename(columns=rename_dict), use_container_width=True)
+        st.dataframe(m_display[cols].rename(columns=renamed), use_container_width=True)

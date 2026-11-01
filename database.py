@@ -4,6 +4,8 @@ from typing import List, Dict, Any, Optional
 
 DB_PATH = "gc_stats.db"
 
+CORE_PLAYERS = ['KrannDy', 'Aquarista', 'Art', 'Cherki', 'Death', 'Kinha', 'mch']
+
 def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -13,7 +15,6 @@ def init_db(db_path: str = DB_PATH):
     conn = get_connection(db_path)
     cursor = conn.cursor()
 
-    # Tabela de jogadores (usuário principal e companheiros de equipe)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS players (
         player_id INTEGER PRIMARY KEY,
@@ -25,7 +26,6 @@ def init_db(db_path: str = DB_PATH):
     )
     """)
 
-    # Tabela de estatísticas consolidadas mensais
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS monthly_stats (
         player_id INTEGER,
@@ -55,7 +55,6 @@ def init_db(db_path: str = DB_PATH):
     )
     """)
 
-    # Tabela de partidas individuais
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS matches (
         match_id INTEGER PRIMARY KEY,
@@ -86,7 +85,7 @@ def save_player(player: Dict[str, Any], db_path: str = DB_PATH):
     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(player_id) DO UPDATE SET
         nick = excluded.nick,
-        level = excluded.level,
+        level = COALESCE(excluded.level, players.level),
         is_main_user = excluded.is_main_user,
         avatar_url = excluded.avatar_url,
         updated_at = CURRENT_TIMESTAMP
@@ -213,27 +212,123 @@ def get_all_months(db_path: str = DB_PATH) -> List[str]:
     conn.close()
     return [r[0] for r in rows]
 
-def get_monthly_summary(month: Optional[str] = None, db_path: str = DB_PATH) -> pd.DataFrame:
+def get_core_players_stats(month: Optional[str] = None, db_path: str = DB_PATH) -> pd.DataFrame:
+    """
+    Retorna as estatísticas consolidadas dos 7 jogadores principais.
+    Se month for fornecido, filtra para aquele mês específico.
+    Se month for None ou 'Todos', consolida todo o histórico acumulado.
+    """
     conn = get_connection(db_path)
-    if month:
-        query = """
-        SELECT p.nick, p.level, p.is_main_user, s.*
-        FROM monthly_stats s
-        JOIN players p ON s.player_id = p.player_id
-        WHERE s.month = ?
+    placeholders = ",".join(["?" for _ in CORE_PLAYERS])
+    
+    if month and month != "Todos":
+        query = f"""
+        SELECT 
+            p.nick,
+            p.player_id,
+            p.level,
+            p.is_main_user,
+            s.matches,
+            s.wins,
+            s.loss,
+            s.win_rate,
+            s.kills,
+            s.deaths,
+            s.kdr,
+            s.adr,
+            s.kast_percent,
+            s.hs_percent,
+            s.first_kills,
+            s.multi_kills,
+            s.bomb_plants,
+            s.bomb_defuses,
+            s.hitbox_head,
+            s.hitbox_chest,
+            s.hitbox_stomach,
+            s.hitbox_arms,
+            s.hitbox_legs
+        FROM players p
+        JOIN monthly_stats s ON p.player_id = s.player_id AND s.month = ?
+        WHERE p.nick IN ({placeholders}) AND s.matches > 0
         ORDER BY s.matches DESC, s.kdr DESC
         """
-        df = pd.read_sql_query(query, conn, params=(month,))
+        params = [month] + CORE_PLAYERS
     else:
-        query = """
-        SELECT p.nick, p.level, p.is_main_user, s.*
-        FROM monthly_stats s
-        JOIN players p ON s.player_id = p.player_id
-        ORDER BY s.month DESC, s.matches DESC
+        query = f"""
+        SELECT 
+            p.nick,
+            p.player_id,
+            p.level,
+            p.is_main_user,
+            SUM(s.matches) as matches,
+            SUM(s.wins) as wins,
+            SUM(s.loss) as loss,
+            ROUND(CAST(SUM(s.wins) AS FLOAT) / SUM(s.matches) * 100, 1) as win_rate,
+            SUM(s.kills) as kills,
+            SUM(s.deaths) as deaths,
+            ROUND(CAST(SUM(s.kills) AS FLOAT) / NULLIF(SUM(s.deaths), 0), 2) as kdr,
+            ROUND(SUM(s.adr * s.matches) / NULLIF(SUM(s.matches), 0), 1) as adr,
+            ROUND(SUM(s.kast_percent * s.matches) / NULLIF(SUM(s.matches), 0), 1) as kast_percent,
+            ROUND(SUM(s.hs_percent * s.matches) / NULLIF(SUM(s.matches), 0), 1) as hs_percent,
+            SUM(s.first_kills) as first_kills,
+            SUM(s.multi_kills) as multi_kills,
+            SUM(s.bomb_plants) as bomb_plants,
+            SUM(s.bomb_defuses) as bomb_defuses,
+            SUM(s.hitbox_head) as hitbox_head,
+            SUM(s.hitbox_chest) as hitbox_chest,
+            SUM(s.hitbox_stomach) as hitbox_stomach,
+            SUM(s.hitbox_arms) as hitbox_arms,
+            SUM(s.hitbox_legs) as hitbox_legs
+        FROM players p
+        JOIN monthly_stats s ON p.player_id = s.player_id AND s.matches > 0
+        WHERE p.nick IN ({placeholders})
+        GROUP BY p.nick, p.player_id, p.level, p.is_main_user
+        ORDER BY matches DESC, kdr DESC
         """
-        df = pd.read_sql_query(query, conn)
+        params = CORE_PLAYERS
+
+    df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
+
+def get_core_squad_totals(month: Optional[str] = None, db_path: str = DB_PATH) -> Dict[str, Any]:
+    """Calcula os totais e médias somadas do conjunto dos 7 jogadores."""
+    df = get_core_players_stats(month=month, db_path=db_path)
+    if df.empty:
+        return {}
+
+    total_matches = int(df["matches"].sum())
+    total_wins = int(df["wins"].sum())
+    total_loss = int(df["loss"].sum())
+    win_rate = round((total_wins / total_matches * 100), 1) if total_matches > 0 else 0.0
+
+    total_kills = int(df["kills"].sum())
+    total_deaths = int(df["deaths"].sum())
+    kdr = round(total_kills / total_deaths, 2) if total_deaths > 0 else 0.0
+
+    # ADR ponderado do squad
+    adr = round((df["adr"] * df["matches"]).sum() / total_matches, 1) if total_matches > 0 else 0.0
+
+    return {
+        "players_count": len(df),
+        "total_matches": total_matches,
+        "total_wins": total_wins,
+        "total_loss": total_loss,
+        "win_rate": win_rate,
+        "total_kills": total_kills,
+        "total_deaths": total_deaths,
+        "kdr": kdr,
+        "adr": adr,
+        "first_kills": int(df["first_kills"].sum()),
+        "multi_kills": int(df["multi_kills"].sum()),
+        "bomb_plants": int(df["bomb_plants"].sum()),
+        "bomb_defuses": int(df["bomb_defuses"].sum()),
+        "hitbox_head": int(df["hitbox_head"].sum()),
+        "hitbox_chest": int(df["hitbox_chest"].sum()),
+        "hitbox_stomach": int(df["hitbox_stomach"].sum()),
+        "hitbox_arms": int(df["hitbox_arms"].sum()),
+        "hitbox_legs": int(df["hitbox_legs"].sum())
+    }
 
 def get_player_history(player_id: int, db_path: str = DB_PATH) -> pd.DataFrame:
     conn = get_connection(db_path)
@@ -250,7 +345,7 @@ def get_matches_by_month(month: Optional[str] = None, player_id: Optional[int] =
     conn = get_connection(db_path)
     conditions = []
     params = []
-    if month:
+    if month and month != "Todos":
         conditions.append("month = ?")
         params.append(month)
     if player_id:
