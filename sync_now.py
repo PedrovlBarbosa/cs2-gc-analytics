@@ -59,7 +59,7 @@ def get_target_months() -> list:
         
     return target
 
-def sync_recent(months_count=None, auto_push=True):
+def sync_recent(months_count=None, auto_push=True, sync_steam=False):
     """
     Sincronização INTELIGENTE e ULTRA-RÁPIDA:
     Busca apenas os jogos novos que ainda não estão no banco de dados.
@@ -98,6 +98,15 @@ def sync_recent(months_count=None, auto_push=True):
             if stats:
                 save_monthly_stats(stats)
             time.sleep(0.02)
+
+    if sync_steam:
+        print(f"\n🎯 Sincronizando partidas da Steam via Leetify...")
+        try:
+            from leetify_collector import sync_steam_matches
+            steam_cnt = sync_steam_matches()
+            total_new_matches += steam_cnt
+        except Exception as e:
+            print(f"Aviso Leetify: {e}")
 
     elapsed = round(time.time() - start_time, 1)
 

@@ -83,9 +83,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Lista de meses disponíveis
-available_months = ["Todo o Histórico (Acumulado)"] + get_all_months()
-
 # Sidebar
 with st.sidebar:
     st.image("https://gcv1-assets.gamersclub.com.br/assets/images/perfil/icon-lobby.png", width=65)
@@ -102,28 +99,56 @@ with st.sidebar:
     except Exception:
         pass
 
-    if has_local_config or has_cloud_secrets:
-        if st.button("🔄 Sincronizar Jogos Agora", use_container_width=True, type="primary"):
-            with st.spinner("Buscando partidas na Gamers Club e atualizando..."):
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        if st.button("🔄 GC", use_container_width=True, help="Sincronizar Gamers Club"):
+            with st.spinner("Buscando Gamers Club..."):
                 try:
                     from sync_now import sync_recent
                     m_cnt, up_cnt, pushed = sync_recent(auto_push=has_local_config)
                     if up_cnt > 0:
-                        if pushed:
-                            st.success(f"🔥 Sucesso! {up_cnt} nova(s) partida(s) sincronizada(s) e publicada(s) para os amigos!")
-                        else:
-                            st.success(f"🔥 Sucesso! {up_cnt} nova(s) partida(s) sincronizada(s) com sucesso!")
+                        st.success(f"🔥 {up_cnt} novas na GC!")
                     else:
-                        st.info("✅ Seu histórico já está 100% atualizado! Nenhuma nova partida pendente.")
+                        st.info("✅ GC em dia!")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao sincronizar: {e}")
+                    st.error(f"Erro GC: {e}")
+    with col_s2:
+        if st.button("🎯 Steam", use_container_width=True, help="Sincronizar Steam via Leetify"):
+            with st.spinner("Buscando Steam no Leetify..."):
+                try:
+                    from leetify_collector import sync_steam_matches
+                    saved = sync_steam_matches()
+                    st.success(f"🎯 {saved} partidas Steam!")
+                    if has_local_config:
+                        from sync_now import push_to_github
+                        push_to_github()
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro Steam: {e}")
+
+    st.markdown("---")
+    st.subheader("🎮 Plataforma")
+    platform_option = st.radio(
+        "Filtrar por Plataforma:",
+        options=["🌐 Todas (Consolidado)", "🏅 Gamers Club (GC)", "🎯 Steam (Premier & MM)"],
+        index=0
+    )
+    if "Gamers Club" in platform_option:
+        platform_filter = "GC"
+        platform_tag = "Gamers Club"
+    elif "Steam" in platform_option:
+        platform_filter = "STEAM"
+        platform_tag = "Steam (Premier & MM)"
     else:
-        st.info("💡 **Aviso:** Como este link está na nuvem pública (Streamlit Cloud), a sincronização é feita com 1 clique pelo seu computador (onde seus cookies estão salvos com segurança) ou configurando 'Secrets' nas opções do Streamlit.")
+        platform_filter = "TODOS"
+        platform_tag = "Todas as Plataformas (Geral)"
 
     st.markdown("---")
     st.subheader("🗓️ Filtro de Período")
+    available_months = ["Todo o Histórico (Acumulado)"] + get_all_months(platform=platform_filter)
     selected_period = st.selectbox(
         "Selecione o Período:",
         options=available_months,
@@ -139,11 +164,11 @@ with st.sidebar:
 # Título Principal
 period_label = "Todo o Histórico Consolidado" if not month_filter else f"Mês: {month_filter}"
 st.markdown(f"<div class='main-title'>CS2 Squad Analytics • Core 7</div>", unsafe_allow_html=True)
-st.markdown(f"<div class='sub-title'>Estatísticas individuais e consolidadas de <b>KrannDy, Aquarista, Art, Cherki, Death, Kinha e mch</b> • Período: <b>{period_label}</b></div>", unsafe_allow_html=True)
+st.markdown(f"<div class='sub-title'>Estatísticas de <b>KrannDy, Aquarista, Art, Cherki, Death, Kinha e mch</b> • Período: <b>{period_label}</b> • Plataforma: <b>{platform_tag}</b></div>", unsafe_allow_html=True)
 
 # Dados do Squad e Totais
-squad_df = get_core_players_stats(month=month_filter)
-squad_totals = get_core_squad_totals(month=month_filter)
+squad_df = get_core_players_stats(month=month_filter, platform=platform_filter)
+squad_totals = get_core_squad_totals(month=month_filter, platform=platform_filter)
 
 if squad_df.empty or not squad_totals:
     st.warning("⚠️ Nenhum dado encontrado para o período selecionado.")
@@ -457,7 +482,7 @@ with tab_individual:
         col_hist, col_hit = st.columns([2, 1])
         with col_hist:
             st.subheader(f"📈 Evolução Mês a Mês de {p['nick']}")
-            p_history = get_player_history(pid)
+            p_history = get_player_history(pid, platform=platform_filter)
             if not p_history.empty:
                 fig_timeline = go.Figure()
                 fig_timeline.add_trace(go.Scatter(
@@ -530,7 +555,7 @@ with tab_maps:
             key="map_player_select"
         )
     target_map_pid = PLAYER_NAME_TO_ID.get(selected_map_player) if selected_map_player != "Todos do Squad" else None
-    matches_df = get_matches_by_month(month_filter, target_map_pid)
+    matches_df = get_matches_by_month(month_filter, target_map_pid, platform=platform_filter)
 
     if matches_df.empty:
         st.info("Nenhuma partida com registro de mapa encontrada para este período/filtro.")
@@ -582,7 +607,7 @@ with tab_matches:
             key="matches_player_select"
         )
     target_match_pid = PLAYER_NAME_TO_ID.get(selected_p_match) if selected_p_match != "Todos do Squad" else None
-    matches_df = get_matches_by_month(month_filter, target_match_pid)
+    matches_df = get_matches_by_month(month_filter, target_match_pid, platform=platform_filter)
     
     if matches_df.empty:
         st.info("Nenhuma partida listada para este período/filtro.")
@@ -593,8 +618,13 @@ with tab_matches:
             for mid, grp in matches_df.groupby("match_id", sort=False):
                 first = grp.iloc[0]
                 nicks_in_match = ", ".join(grp["player_nick"].dropna().unique().tolist())
+                plat = first.get("platform", "GC")
+                mtype = first.get("match_type", "lobby")
+                plat_badge = "🏅 GC" if plat == "GC" else ("🎯 Premier" if mtype == "premier" else "🎯 Steam MM")
+                clean_id = str(mid).replace("steam_", "")[:10] + "..." if str(mid).startswith("steam_") else str(mid)
                 grouped_records.append({
-                    "match_id": mid,
+                    "match_id": clean_id,
+                    "plataforma": plat_badge,
                     "jogadores": nicks_in_match,
                     "resultado": "🏆 Vitória" if first["win"] == 1 else "❌ Derrota",
                     "map": first["map"],
@@ -605,33 +635,55 @@ with tab_matches:
                 })
             m_display = pd.DataFrame(grouped_records)
             st.caption(f"Mostrando **{len(m_display)}** partidas disputadas pelo time no período.")
-            cols = ["match_id", "resultado", "map", "placar", "jogadores", "team_name_a", "team_name_b"]
+            cols = ["match_id", "plataforma", "resultado", "map", "placar", "jogadores"]
             renamed = {
                 "match_id": "ID Partida",
+                "plataforma": "Plataforma",
                 "resultado": "Resultado",
                 "map": "Mapa",
                 "placar": "Placar",
-                "jogadores": "Jogadores Presentes",
-                "team_name_a": "Time A",
-                "team_name_b": "Time B"
+                "jogadores": "Jogadores Presentes"
             }
             st.dataframe(m_display[cols].rename(columns=renamed), use_container_width=True)
         else:
             st.caption(f"Mostrando **{len(matches_df)}** partidas registradas para {selected_p_match}.")
             m_display = matches_df.copy()
+            m_display["plataforma"] = m_display.apply(
+                lambda r: "🏅 GC" if r.get("platform") == "GC" else ("🎯 Premier" if r.get("match_type") == "premier" else "🎯 Steam MM"),
+                axis=1
+            )
+            m_display["clean_id"] = m_display["match_id"].apply(
+                lambda x: str(x).replace("steam_", "")[:10] + "..." if str(x).startswith("steam_") else str(x)
+            )
             m_display["resultado"] = m_display["win"].apply(lambda w: "🏆 Vitória" if w == 1 else "❌ Derrota")
             m_display["placar"] = m_display.apply(lambda r: f"{r['score_a']} x {r['score_b']}", axis=1)
-            m_display["diff"] = m_display["rating_diff"].apply(lambda d: f"+{d}" if d > 0 else str(d))
+            m_display["diff"] = m_display["rating_diff"].apply(lambda d: f"+{d}" if d > 0 else (str(d) if d != 0 else "-"))
 
-            cols = ["match_id", "resultado", "map", "placar", "team_name_a", "team_name_b", "rating_player", "diff"]
-            renamed = {
-                "match_id": "ID Partida",
-                "resultado": "Resultado",
-                "map": "Mapa",
-                "placar": "Placar",
-                "team_name_a": "Time A",
-                "team_name_b": "Time B",
-                "rating_player": "Rating Final",
-                "diff": "Pontos (RP)"
-            }
+            has_steam_stats = m_display["kills"].sum() > 0
+            if has_steam_stats:
+                cols = ["clean_id", "plataforma", "resultado", "map", "placar", "kills", "deaths", "adr", "diff"]
+                renamed = {
+                    "clean_id": "ID Partida",
+                    "plataforma": "Plataforma",
+                    "resultado": "Resultado",
+                    "map": "Mapa",
+                    "placar": "Placar",
+                    "kills": "Kills",
+                    "deaths": "Deaths",
+                    "adr": "ADR",
+                    "diff": "Pontos (RP)"
+                }
+            else:
+                cols = ["clean_id", "plataforma", "resultado", "map", "placar", "team_name_a", "team_name_b", "rating_player", "diff"]
+                renamed = {
+                    "clean_id": "ID Partida",
+                    "plataforma": "Plataforma",
+                    "resultado": "Resultado",
+                    "map": "Mapa",
+                    "placar": "Placar",
+                    "team_name_a": "Time A",
+                    "team_name_b": "Time B",
+                    "rating_player": "Rating Final",
+                    "diff": "Pontos (RP)"
+                }
             st.dataframe(m_display[cols].rename(columns=renamed), use_container_width=True)
