@@ -92,6 +92,18 @@ with st.sidebar:
     st.caption("Painel Exclusivo dos 7 Jogadores Principais")
     
     st.markdown("---")
+    st.subheader("⚡ Sincronização")
+    if st.button("🔄 Sincronizar Jogos Agora", use_container_width=True, type="primary"):
+        with st.spinner("Buscando partidas recentes na Gamers Club..."):
+            try:
+                from sync_now import sync_recent
+                m_cnt, up_cnt = sync_recent(2)
+                st.success(f"✅ Atualizado! {up_cnt} registros sincronizados.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao sincronizar: {e}")
+
+    st.markdown("---")
     st.subheader("🗓️ Filtro de Período")
     selected_period = st.selectbox(
         "Selecione o Período:",
@@ -134,7 +146,6 @@ with tab_squad_totals:
     st.subheader(f"📊 Totais Consolidados do Conjunto dos 7 Jogadores ({period_label})")
     st.caption("Soma e médias acumuladas de todas as partidas disputadas pelo grupo.")
     
-    # Linha 1 de métricas coletivas
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         st.markdown(f"""
@@ -187,7 +198,6 @@ with tab_squad_totals:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Linha 2 de métricas (Objetivos: C4 e Hitbox)
     col_obj1, col_obj2 = st.columns([1, 1])
     with col_obj1:
         st.markdown("#### 💣 Objetivos de C4 Coletivos")
@@ -239,7 +249,6 @@ with tab_squad_totals:
 with tab_comparative:
     st.subheader(f"⚔️ Comparativo Direto entre os 7 Jogadores ({period_label})")
 
-    # Destaques do Grupo
     top_kills = squad_df.loc[squad_df['kills'].idxmax()]
     top_adr = squad_df.loc[squad_df['adr'].idxmax()]
     top_kdr = squad_df.loc[squad_df['kdr'].idxmax()]
@@ -275,7 +284,6 @@ with tab_comparative:
         </div>
         """, unsafe_allow_html=True)
 
-    # Gráficos Comparativos Lado a Lado
     g_col1, g_col2 = st.columns(2)
     with g_col1:
         fig_adr = px.bar(
@@ -322,7 +330,6 @@ with tab_comparative:
         fig_fk.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', height=350)
         st.plotly_chart(fig_fk, use_container_width=True)
 
-    # Tabela Completa de Classificação
     st.markdown("### 📋 Tabela Geral Comparativa dos 7 Jogadores")
     cols_display = [
         "nick", "matches", "wins", "loss", "win_rate", "kdr", "adr",
@@ -361,7 +368,6 @@ with tab_individual:
 
         st.markdown(f"### Perfil de **{p['nick']}** ({period_label})")
         
-        # Cards de estatísticas individuais
         p1, p2, p3, p4, p5, p6 = st.columns(6)
         with p1:
             st.markdown(f"""
@@ -414,7 +420,6 @@ with tab_individual:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Gráfico histórico do jogador
         col_hist, col_hit = st.columns([2, 1])
         with col_hist:
             st.subheader(f"📈 Evolução Mês a Mês de {p['nick']}")
