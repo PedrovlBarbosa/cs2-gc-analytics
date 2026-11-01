@@ -5,14 +5,14 @@
 // 1. Abra no navegador: https://steamcommunity.com/my/gcpd/730/?tab=matchhistorypremier
 // 2. Abra o Console (F12 ou Ctrl+Shift+I -> aba 'Console').
 // 3. Cole todo este código e aperte ENTER.
-// 4. O robô vai CLICAR SOZINHO repetidamente até carregar todo o histórico
-//    (ou até 2023) e vai BAIXAR o arquivo 'steam_matches.json' automaticamente!
+// 4. O robô vai aguardar pacientemente a resposta da Steam entre cada clique
+//    e baixar o arquivo 'steam_matches.json' automaticamente ao terminar!
 // =====================================================================
 
 (async function autoExtractSteamHistory() {
-    console.log("🚀 Iniciando Robô de Auto-Carregamento da Steam...");
+    console.log("🚀 Iniciando Robô de Auto-Carregamento da Steam (Modo Paciente)...");
 
-    // Cria um painel visual flutuante na tela para você acompanhar
+    // Cria painel flutuante
     let overlay = document.getElementById("steam_auto_extract_overlay");
     if (!overlay) {
         overlay = document.createElement("div");
@@ -30,7 +30,7 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.5);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             font-size: 14px;
-            min-width: 280px;
+            min-width: 290px;
         `;
         document.body.appendChild(overlay);
     }
@@ -42,62 +42,111 @@
             🤖 Robô Steam Auto-Clicker
         </div>
         <div id="steam_auto_status" style="margin-bottom: 12px; color: #94a3b8;">
-            Iniciando auto-cliques...
+            Preparando...
         </div>
         <button id="steam_stop_btn" style="
-            background: #ef4444; color: white; border: none; padding: 6px 12px;
+            background: #ef4444; color: white; border: none; padding: 7px 12px;
             border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%;
         ">🛑 Parar e Baixar Agora</button>
     `;
 
     document.getElementById("steam_stop_btn").onclick = () => {
         shouldStop = true;
-        document.getElementById("steam_auto_status").innerText = "Parando e gerando arquivo...";
+        document.getElementById("steam_auto_status").innerText = "⏹️ Parando e gerando arquivo...";
     };
 
     let clicks = 0;
-    const TARGET_YEAR = 2023; // Para quando alcançar partidas de 2023
+    let consecutiveMissingBtn = 0;
+    const TARGET_YEAR = 2023; // Para quando alcançar 2023
 
     while (!shouldStop) {
         const tables = document.querySelectorAll('table.generic_kv_table');
         const loadBtn = document.getElementById('load_more_button');
 
-        // Atualiza status visual
+        // Atualiza status na tela
         const statusEl = document.getElementById("steam_auto_status");
         if (statusEl) {
             statusEl.innerHTML = `
-                ⏳ Cliques realizados: <b>${clicks}</b><br>
-                📊 Partidas carregadas: <b>${tables.length}</b>
+                🔄 Partidas carregadas: <b style="color:#38bdf8;">${tables.length}</b><br>
+                🖱️ Cliques realizados: <b>${clicks}</b><br>
+                <span style="font-size:12px; color:#64748b;">(Aguardando resposta da Steam...)</span>
             `;
         }
 
-        // Verifica se alcançou partidas do ano alvo
-        const text = document.body.innerText;
-        if (text.includes(`\n${TARGET_YEAR}-`) || text.includes(` ${TARGET_YEAR}-`)) {
-            console.log(`🎯 Ano ${TARGET_YEAR} alcançado!`);
+        // 1. Verifica se já alcançou partidas de 2023 no DOM
+        let foundTargetYear = false;
+        tables.forEach(t => {
+            const txt = t.innerText;
+            if (txt.includes(`${TARGET_YEAR}-`)) {
+                foundTargetYear = true;
+            }
+        });
+
+        if (foundTargetYear) {
+            console.log(`🎯 Partidas de ${TARGET_YEAR} alcançadas!`);
             break;
         }
 
-        // Verifica se o botão de carregar mais ainda existe e está visível
-        if (!loadBtn || loadBtn.offsetParent === null || loadBtn.style.display === 'none' || loadBtn.classList.contains('disabled')) {
-            console.log("🏁 Fim do histórico alcançado (botão sumiu)!");
-            break;
+        // 2. Verifica se o botão está pronto para ser clicado
+        const isBtnReady = loadBtn && loadBtn.offsetParent !== null && loadBtn.style.display !== 'none' && !loadBtn.classList.contains('disabled');
+
+        if (!isBtnReady) {
+            consecutiveMissingBtn++;
+            console.log(`[Aguardando Steam...] Botão ocupado ou carregando (${consecutiveMissingBtn}/6)`);
+            if (statusEl) {
+                statusEl.innerHTML = `
+                    ⏳ Steam carregando página...<br>
+                    Partidas na tela: <b>${tables.length}</b><br>
+                    <span style="font-size:12px; color:#f59e0b;">Aguardando liberação do botão (${consecutiveMissingBtn}/6)...</span>
+                `;
+            }
+
+            // Se o botão sumiu por mais de 6 checagens consecutivas (12 segundos), o histórico realmente acabou
+            if (consecutiveMissingBtn >= 6) {
+                console.log("🏁 Fim do histórico alcançado (botão não voltou mais)!");
+                break;
+            }
+
+            // Aguarda 2 segundos e tenta checar o botão novamente
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
         }
+
+        // Botão está pronto! Reseta o contador de ausência
+        consecutiveMissingBtn = 0;
+
+        // Guarda a quantidade de partidas antes do clique
+        const prevCount = tables.length;
 
         // Clica no botão
         loadBtn.click();
         clicks++;
+        console.log(`[Clique #${clicks}] Botão pressionado. Aguardando a Steam carregar...`);
 
-        // Aguarda a resposta da Steam (900ms para ser rápido e seguro)
-        await new Promise(r => setTimeout(r, 900));
-
-        // Rola suavemente até o final da página para garantir visibilidade
+        // Rola a página até o final
         window.scrollTo(0, document.body.scrollHeight);
+
+        // Aguarda ativamente as novas partidas entrarem na página (espera até 8 segundos)
+        let waitTime = 0;
+        let gotNewMatches = false;
+        while (waitTime < 8000 && !shouldStop) {
+            await new Promise(r => setTimeout(r, 600));
+            waitTime += 600;
+            const currentTables = document.querySelectorAll('table.generic_kv_table').length;
+            if (currentTables > prevCount) {
+                gotNewMatches = true;
+                console.log(`  -> +${currentTables - prevCount} novas partidas renderizadas!`);
+                break;
+            }
+        }
+
+        // Pequena pausa respeitosa de 1.5s antes do próximo clique para não sobrecarregar a Steam
+        await new Promise(r => setTimeout(r, 1500));
     }
 
     // Processa a extração dos dados
     const statusEl = document.getElementById("steam_auto_status");
-    if (statusEl) statusEl.innerHTML = "⚡ Extraindo dados das partidas...";
+    if (statusEl) statusEl.innerHTML = "⚡ Processando e gerando o arquivo JSON...";
 
     const matches = [];
     const tables = document.querySelectorAll('table.generic_kv_table');
@@ -183,7 +232,7 @@
             </div>
             <div style="color: #cbd5e1; font-size: 13px;">
                 <b>${matches.length}</b> partidas foram extraídas!<br>
-                Arquivo <b>steam_matches.json</b> baixado.<br><br>
+                Arquivo <b>steam_matches.json</b> baixado com sucesso.<br><br>
                 Agora envie esse arquivo no Dashboard!
             </div>
         `;
