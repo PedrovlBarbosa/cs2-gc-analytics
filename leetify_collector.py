@@ -22,13 +22,17 @@ if sys.platform == "win32":
         pass
 
 SQUAD_PLAYERS = {
-    'KrannDy':   {'player_id': 108698, 'steam_id': '76561198063961202'},
-    'Aquarista': {'player_id': 87484,  'steam_id': '76561198189457421'},
-    'Art':       {'player_id': 108939, 'steam_id': '76561198063957152'},
-    'Cherki':    {'player_id': 540777, 'steam_id': '76561198142174476'},
-    'Death':     {'player_id': 318687, 'steam_id': '76561198228725928'},
-    'Kinha':     {'player_id': 108940, 'steam_id': '76561198135651044'},
-    'mch':       {'player_id': 89302,  'steam_id': '76561198212784573'}
+    'KrannDy':      {'player_id': 108698,  'steam_id': '76561198063961202'},
+    'Aquarista':    {'player_id': 87484,   'steam_id': '76561198189457421'},
+    'Art':          {'player_id': 108939,  'steam_id': '76561198063957152'},
+    'Cherki':       {'player_id': 540777,  'steam_id': '76561198142174476'},
+    'Death':        {'player_id': 318687,  'steam_id': '76561198228725928'},
+    'Kinha':        {'player_id': 108940,  'steam_id': '76561198135651044'},
+    'mch':          {'player_id': 89302,   'steam_id': '76561198212784573'},
+    'The merdas':   {'player_id': 2502581, 'steam_id': '76561199051796322'},
+    'Coquinha':     {'player_id': 2492447, 'steam_id': '76561199516992485'},
+    'Allan Daniel': {'player_id': 2650509, 'steam_id': '76561199238615143'},
+    'Daniel':       {'player_id': 2734005, 'steam_id': '76561198993159598'}
 }
 
 def get_leetify_headers() -> Dict[str, str]:

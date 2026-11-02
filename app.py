@@ -98,7 +98,7 @@ st.markdown("""
 with st.sidebar:
     st.image("https://gcv1-assets.gamersclub.com.br/assets/images/perfil/icon-lobby.png", width=65)
     st.title("Squad Analytics")
-    st.caption("Painel Exclusivo dos 7 Jogadores Principais")
+    st.caption("Painel Exclusivo do Squad de Jogadores")
     
     st.markdown("---")
     st.subheader("⚡ Sincronização")
@@ -202,14 +202,14 @@ with st.sidebar:
     month_filter = None if selected_period == "Todo o Histórico (Acumulado)" else selected_period
 
     st.markdown("---")
-    st.markdown("### 🏆 Core Squad (7 Jogadores)")
+    st.markdown("### 🏆 Core Squad")
     for nick in CORE_PLAYERS:
         st.markdown(f"<span class='squad-badge'>🎮 {nick}</span>", unsafe_allow_html=True)
 
 # Título Principal
 period_label = "Todo o Histórico Consolidado" if not month_filter else f"Mês: {month_filter}"
-st.markdown(f"<div class='main-title'>CS2 Squad Analytics • Core 7</div>", unsafe_allow_html=True)
-st.markdown(f"<div class='sub-title'>Estatísticas de <b>KrannDy, Aquarista, Art, Cherki, Death, Kinha e mch</b> • Período: <b>{period_label}</b> • Plataforma: <b>{platform_tag}</b></div>", unsafe_allow_html=True)
+st.markdown(f"<div class='main-title'>CS2 Squad Analytics • Squad</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='sub-title'>Estatísticas de <b>Todos os Jogadores do Squad</b> • Período: <b>{period_label}</b> • Plataforma: <b>{platform_tag}</b></div>", unsafe_allow_html=True)
 
 # Dados do Squad e Totais
 try:
@@ -235,7 +235,7 @@ squad_df["defuses_per_match"] = (squad_df["bomb_defuses"] / m_denom).round(2)
 # Abas Principais
 tab_squad_totals, tab_comparative, tab_gc_advanced, tab_telemetry, tab_individual, tab_maps, tab_matches = st.tabs([
     "🔥 Conjunto de Todos (Squad)",
-    "⚔️ Comparativo dos 7",
+    "⚔️ Comparativo do Squad",
     "🏅 Novas Estatísticas GC",
     "🎯 Telemetria Avançada (Leetify)",
     "👤 Perfil Individual",
@@ -247,7 +247,7 @@ tab_squad_totals, tab_comparative, tab_gc_advanced, tab_telemetry, tab_individua
 # TAB 1: CONJUNTO DE TODOS (SQUAD COLETIVO)
 # -----------------------------------------------------------------------------
 with tab_squad_totals:
-    st.subheader(f"📊 Totais Consolidados do Conjunto dos 7 Jogadores ({period_label})")
+    st.subheader(f"📊 Totais Consolidados do Conjunto de Todos os Jogadores ({period_label})")
     st.caption("Soma e médias acumuladas de todas as partidas disputadas pelo grupo.")
     
     # Extrai valores de forma segura protegida contra KeyError
@@ -487,7 +487,7 @@ with tab_comparative:
         fig_fk.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', height=350)
         st.plotly_chart(fig_fk, use_container_width=True)
 
-    st.markdown("### 📋 Tabela Geral Comparativa dos 7 Jogadores")
+    st.markdown("### 📋 Tabela Geral Comparativa do Squad")
     cols_display = [
         "nick", "matches", "wins", "loss", "win_rate", "kdr", "adr",
         "kills", "kills_per_match", "deaths", "deaths_per_match",
@@ -1138,7 +1138,11 @@ PLAYER_NAME_TO_ID = {
     'Cherki': 540777,
     'Death': 318687,
     'Kinha': 108940,
-    'mch': 89302
+    'mch': 89302,
+    'The merdas': 2502581,
+    'Coquinha': 2492447,
+    'Allan Daniel': 2650509,
+    'Daniel': 2734005
 }
 
 # -----------------------------------------------------------------------------

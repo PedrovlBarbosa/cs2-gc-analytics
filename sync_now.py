@@ -26,7 +26,11 @@ TARGET_PLAYERS = {
     'Cherki': 540777,
     'Death': 318687,
     'Kinha': 108940,
-    'mch': 89302
+    'mch': 89302,
+    'The merdas': 2502581,
+    'Coquinha': 2492447,
+    'Allan Daniel': 2650509,
+    'Daniel': 2734005
 }
 
 def push_to_github() -> bool:

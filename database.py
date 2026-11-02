@@ -4,7 +4,10 @@ from typing import List, Dict, Any, Optional
 
 DB_PATH = "gc_stats.db"
 
-CORE_PLAYERS = ['KrannDy', 'Aquarista', 'Art', 'Cherki', 'Death', 'Kinha', 'mch']
+CORE_PLAYERS = [
+    'KrannDy', 'Aquarista', 'Art', 'Cherki', 'Death', 'Kinha', 'mch',
+    'The merdas', 'Coquinha', 'Allan Daniel', 'Daniel'
+]
 
 def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)

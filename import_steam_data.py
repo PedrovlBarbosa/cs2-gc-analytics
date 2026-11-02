@@ -18,13 +18,17 @@ if sys.platform == "win32":
         pass
 
 SQUAD_PLAYERS = {
-    'KrannDy':   {'player_id': 108698, 'steam_id': '76561198063961202', 'aliases': ['krandy', 'kranndy']},
-    'Aquarista': {'player_id': 87484,  'steam_id': '76561198189457421', 'aliases': ['aquarista', 'jhonfissura', 'jhon']},
-    'Art':       {'player_id': 108939, 'steam_id': '76561198063957152', 'aliases': ['art']},
-    'Cherki':    {'player_id': 540777, 'steam_id': '76561198142174476', 'aliases': ['cherki', 'fn$', 'fn$ 777']},
-    'Death':     {'player_id': 318687, 'steam_id': '76561198228725928', 'aliases': ['death', 'thors']},
-    'Kinha':     {'player_id': 108940, 'steam_id': '76561198135651044', 'aliases': ['kinha', 'monster']},
-    'mch':       {'player_id': 89302,  'steam_id': '76561198212784573', 'aliases': ['mch', 'tgzinh0', 'tgzin']}
+    'KrannDy':      {'player_id': 108698,  'steam_id': '76561198063961202', 'aliases': ['krandy', 'kranndy']},
+    'Aquarista':    {'player_id': 87484,   'steam_id': '76561198189457421', 'aliases': ['aquarista', 'jhonfissura', 'jhon', 'jhonkek']},
+    'Art':          {'player_id': 108939,  'steam_id': '76561198063957152', 'aliases': ['art', 'artricolor']},
+    'Cherki':       {'player_id': 540777,  'steam_id': '76561198142174476', 'aliases': ['cherki', 'fn$', 'fn$ 777']},
+    'Death':        {'player_id': 318687,  'steam_id': '76561198228725928', 'aliases': ['death', 'thors']},
+    'Kinha':        {'player_id': 108940,  'steam_id': '76561198135651044', 'aliases': ['kinha', 'monster']},
+    'mch':          {'player_id': 89302,   'steam_id': '76561198212784573', 'aliases': ['mch', 'tgzinh0', 'tgzin', 'thierryguedes']},
+    'The merdas':   {'player_id': 2502581, 'steam_id': '76561199051796322', 'aliases': ['zicoring', 'the merdas', 'merdas']},
+    'Coquinha':     {'player_id': 2492447, 'steam_id': '76561199516992485', 'aliases': ['perinao', 'coquinha', 'coca', 'allandaniela']},
+    'Allan Daniel': {'player_id': 2650509, 'steam_id': '76561199238615143', 'aliases': ['noobeeskins', 'allan daniel', 'allan']},
+    'Daniel':       {'player_id': 2734005, 'steam_id': '76561198993159598', 'aliases': ['john wick', 'daniel']}
 }
 
 def identify_squad_player(name: str, steam_id: Optional[str] = None) -> Optional[tuple]:
