@@ -1,9 +1,18 @@
 @echo off
-title Atualizar Estatisticas Gamers Club
+chcp 65001 >nul
+title Atualizar Estatisticas - Gamers Club ^& Steam
+cls
+
 echo ========================================================
-echo   Sincronizando estatisticas recentes da Gamers Club...
+echo   Sincronizando Estatísticas (Gamers Club ^& Steam)...
 echo ========================================================
-python sync_now.py
 echo.
-echo [OK] Processo finalizado com sucesso!
+
+python sync_now.py
+
+echo.
+echo ========================================================
+echo   [OK] Sincronização concluída com sucesso!
+echo ========================================================
+echo Esta janela fechará em 5 segundos...
 ping -n 5 127.0.0.1 >nul

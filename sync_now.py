@@ -59,7 +59,7 @@ def get_target_months() -> list:
         
     return target
 
-def sync_recent(months_count=None, auto_push=True, sync_steam=False):
+def sync_recent(months_count=None, auto_push=True, sync_steam=True):
     """
     Sincronização INTELIGENTE e ULTRA-RÁPIDA:
     Busca apenas os jogos novos que ainda não estão no banco de dados.
@@ -123,4 +123,4 @@ def sync_recent(months_count=None, auto_push=True, sync_steam=False):
     return len(target_months), total_new_matches, pushed
 
 if __name__ == "__main__":
-    sync_recent(auto_push=True)
+    sync_recent(auto_push=True, sync_steam=True)

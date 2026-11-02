@@ -107,13 +107,27 @@ with st.sidebar:
     except Exception:
         pass
 
+    if st.button("⚡ Atualizar Tudo (GC + Steam)", use_container_width=True, help="Sincroniza Gamers Club e Steam (Leetify) de uma vez só"):
+        with st.spinner("Sincronizando Gamers Club e Steam..."):
+            try:
+                from sync_now import sync_recent
+                m_cnt, up_cnt, pushed = sync_recent(auto_push=has_local_config, sync_steam=True)
+                if up_cnt > 0:
+                    st.success(f"🔥 {up_cnt} nova(s) partida(s) adicionada(s)!")
+                else:
+                    st.info("✅ Tudo 100% em dia!")
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro na sincronização: {e}")
+
     col_s1, col_s2 = st.columns(2)
     with col_s1:
-        if st.button("🔄 GC", use_container_width=True, help="Sincronizar Gamers Club"):
+        if st.button("🔄 Apenas GC", use_container_width=True, help="Sincronizar apenas Gamers Club"):
             with st.spinner("Buscando Gamers Club..."):
                 try:
                     from sync_now import sync_recent
-                    m_cnt, up_cnt, pushed = sync_recent(auto_push=has_local_config)
+                    m_cnt, up_cnt, pushed = sync_recent(auto_push=has_local_config, sync_steam=False)
                     if up_cnt > 0:
                         st.success(f"🔥 {up_cnt} novas na GC!")
                     else:
@@ -123,7 +137,7 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"Erro GC: {e}")
     with col_s2:
-        if st.button("🎯 Steam", use_container_width=True, help="Sincronizar Steam via Leetify"):
+        if st.button("🎯 Apenas Steam", use_container_width=True, help="Sincronizar apenas Steam via Leetify"):
             with st.spinner("Buscando Steam no Leetify..."):
                 try:
                     from leetify_collector import sync_steam_matches
