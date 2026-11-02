@@ -275,6 +275,32 @@ class GamersClubCollector:
                 break
         return matches_result
 
+    def fetch_and_save_gc_match_stats(self, match_id: str) -> bool:
+        """Busca as estatísticas detalhadas da Gamers Club (Entries, Trades, Clutch, Utilitárias e Mira) e salva no banco."""
+        try:
+            stats_url = f"https://gamersclub.com.br/api/lobby/match/{match_id}/stats"
+            resp = self.session.get(stats_url, timeout=12)
+            if resp.status_code != 200:
+                return False
+            stats_data = resp.json()
+            if not isinstance(stats_data, dict) or stats_data.get("status") != "pronto":
+                return False
+
+            lobby_data = None
+            try:
+                l_url = f"https://gamersclub.com.br/lobby/match/{match_id}/1"
+                l_resp = self.session.get(l_url, timeout=10)
+                if l_resp.status_code == 200:
+                    lobby_data = l_resp.json()
+            except Exception:
+                pass
+
+            from database import save_gc_match_details
+            save_gc_match_details(str(match_id), stats_data, lobby_data)
+            return True
+        except Exception as e:
+            return False
+
     def run(self, max_months: Optional[int] = None):
         """Executa a coleta completa de dados."""
         init_db()

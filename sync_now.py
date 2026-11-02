@@ -74,6 +74,7 @@ def sync_recent(months_count=None, auto_push=True, sync_steam=True):
 
     total_new_matches = 0
     updated_players = set()
+    new_gc_match_ids = set()
 
     for m in target_months:
         for nick, pid in TARGET_PLAYERS.items():
@@ -84,11 +85,20 @@ def sync_recent(months_count=None, auto_push=True, sync_steam=True):
                 save_matches(new_matches)
                 total_new_matches += len(new_matches)
                 updated_players.add((nick, pid, m))
+                for nm in new_matches:
+                    new_gc_match_ids.add(str(nm["match_id"]))
                 print(f"  [+] {nick:10s} -> {len(new_matches)} nova(s) partida(s) adicionada(s)!")
             else:
                 print(f"  [-] {nick:10s} -> em dia (0 novas partidas).")
             
             time.sleep(0.02)
+
+    # Enriquece as novas partidas da GC com as estatísticas detalhadas (Entries, Trades, Clutch, Utilitárias e Mira)
+    if new_gc_match_ids:
+        print(f"\n🎯 Coletando novas estatísticas detalhadas da GC ({len(new_gc_match_ids)} partidas)...")
+        for mid in new_gc_match_ids:
+            collector.fetch_and_save_gc_match_stats(mid)
+            time.sleep(0.05)
 
     # Se encontramos partidas novas, atualizamos o resumo consolidado do mês correspondente
     if updated_players:
