@@ -193,11 +193,13 @@ class GamersClubCollector:
         return None
 
     def fetch_new_matches(self, pid: int, month: str, known_ids: set) -> List[Dict[str, Any]]:
-        """Busca apenas as partidas novas que ainda não estão salvas no banco (para na primeira partida já conhecida)."""
+        """
+        Busca as partidas de um mês que ainda não estão salvas no banco.
+        A API da Gamers Club retorna em ordem cronológica (mais antiga para mais nova).
+        """
         new_matches = []
         page = 0
-        hit_known = False
-        while not hit_known:
+        while True:
             url = f"https://gamersclub.com.br/api/box/historyMatchesPage/{pid}/{month}/{page}"
             try:
                 resp = self.session.get(url, timeout=15)
@@ -207,11 +209,18 @@ class GamersClubCollector:
                 page_matches = data.get("monthMatches", [])
                 if not page_matches:
                     break
+
+                # Se a página tiver 20 partidas e a última (mais recente da página) já está no banco,
+                # pula direto para a próxima página para acelerar a busca
+                last_m_id = page_matches[-1].get("id")
+                if len(page_matches) == 20 and (last_m_id in known_ids or str(last_m_id) in known_ids):
+                    page += 1
+                    continue
+
                 for m in page_matches:
                     m_id = m.get("id")
                     if m_id in known_ids or str(m_id) in known_ids:
-                        hit_known = True
-                        break
+                        continue
                     new_matches.append({
                         "match_id": m_id,
                         "player_id": pid,
@@ -224,7 +233,8 @@ class GamersClubCollector:
                         "rating_player": m.get("ratingPlayer", 0),
                         "rating_diff": m.get("ratingDiff", 0),
                         "map": m.get("map", ""),
-                        "match_type": m.get("type", "lobby")
+                        "match_type": m.get("type", "lobby"),
+                        "platform": "GC"
                     })
                 page += 1
             except Exception:
