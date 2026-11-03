@@ -376,18 +376,24 @@ with tab_squad_totals:
 with tab_comparative:
     st.subheader(f"⚔️ Comparativo Direto entre os 7 Jogadores ({period_label})")
 
-    top_kills = squad_df.loc[squad_df['kills'].idxmax()]
-    top_adr = squad_df.loc[squad_df['adr'].idxmax()]
-    top_kdr = squad_df.loc[squad_df['kdr'].idxmax()]
-    top_first = squad_df.loc[squad_df['first_kills'].idxmax()]
+    # Considera jogadores com pelo menos um volume mínimo de jogos para cálculo justo de liderança por média
+    min_m = 3 if (squad_df['matches'] >= 3).any() else 1
+    eval_squad = squad_df[squad_df['matches'] >= min_m]
+    if eval_squad.empty:
+        eval_squad = squad_df
+
+    top_kills = eval_squad.loc[eval_squad['kills_per_match'].idxmax()]
+    top_adr = eval_squad.loc[eval_squad['adr'].idxmax()]
+    top_kdr = eval_squad.loc[eval_squad['kdr'].idxmax()]
+    top_first = eval_squad.loc[eval_squad['first_kills_per_match'].idxmax()]
 
     h1, h2, h3, h4 = st.columns(4)
     with h1:
         st.markdown(f"""
         <div class='highlight-card'>
-            <b>👑 Top Fragger:</b><br>
-            <span style='font-size:1.3rem; font-weight:700; color:#ff7700;'>{top_kills['nick']}</span> — <b>{top_kills['kills']:,}</b> Kills
-            <div style='font-size:0.8rem; color:#94a3b8;'>Média: <b>{top_kills['kills_per_match']:.1f}</b> kills / jogo</div>
+            <b>👑 Maior Média de Kills:</b><br>
+            <span style='font-size:1.3rem; font-weight:700; color:#ff7700;'>{top_kills['nick']}</span> — <b>{top_kills['kills_per_match']:.1f}</b> Kills/Jogo
+            <div style='font-size:0.8rem; color:#94a3b8;'>Total: <b>{top_kills['kills']:,}</b> kills em {top_kills['matches']} jogos</div>
         </div>
         """, unsafe_allow_html=True)
     with h2:
@@ -395,7 +401,7 @@ with tab_comparative:
         <div class='highlight-card'>
             <b>🔥 Maior ADR (Dano Médio):</b><br>
             <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{top_adr['nick']}</span> — <b>{top_adr['adr']:.1f}</b> ADR
-            <div style='font-size:0.8rem; color:#94a3b8;'>Dano causado a cada round</div>
+            <div style='font-size:0.8rem; color:#94a3b8;'>Dano médio causado por round</div>
         </div>
         """, unsafe_allow_html=True)
     with h3:
@@ -403,15 +409,15 @@ with tab_comparative:
         <div class='highlight-card'>
             <b>🎯 Maior K/D Ratio:</b><br>
             <span style='font-size:1.3rem; font-weight:700; color:#10b981;'>{top_kdr['nick']}</span> — <b>{top_kdr['kdr']:.2f}</b> KDR
-            <div style='font-size:0.8rem; color:#94a3b8;'>Kills / Mortes acumuladas</div>
+            <div style='font-size:0.8rem; color:#94a3b8;'>Eficiência de abates por morte</div>
         </div>
         """, unsafe_allow_html=True)
     with h4:
         st.markdown(f"""
         <div class='highlight-card'>
-            <b>⚡ Rei do First Kill:</b><br>
-            <span style='font-size:1.3rem; font-weight:700; color:#a855f7;'>{top_first['nick']}</span> — <b>{top_first['first_kills']:,}</b> Aberturas
-            <div style='font-size:0.8rem; color:#94a3b8;'>Média: <b>{top_first['first_kills_per_match']:.2f}</b> por jogo</div>
+            <b>⚡ Rei do First Kill (Aberturas):</b><br>
+            <span style='font-size:1.3rem; font-weight:700; color:#a855f7;'>{top_first['nick']}</span> — <b>{top_first['first_kills_per_match']:.2f}</b> FK/Jogo
+            <div style='font-size:0.8rem; color:#94a3b8;'>Total: <b>{top_first['first_kills']:,}</b> aberturas ({top_first['matches']} jogos)</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -487,38 +493,36 @@ with tab_comparative:
         fig_fk.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', height=350)
         st.plotly_chart(fig_fk, use_container_width=True)
 
-    st.markdown("### 📋 Tabela Geral Comparativa do Squad")
+    st.markdown("### 📋 Tabela Geral Comparativa do Squad (Médias & Performance)")
+    st.caption("💡 As métricas de médias por jogo (K/D, ADR, Kills/Jogo, FK/Jogo) permitem avaliar e comparar o impacto real de cada jogador independentemente do número de partidas jogadas.")
     cols_display = [
-        "nick", "matches", "wins", "loss", "win_rate", "kdr", "adr",
-        "kills", "kills_per_match", "deaths", "deaths_per_match",
-        "first_kills", "first_kills_per_match", "multi_kills", "multi_kills_per_match",
-        "bomb_plants", "plants_per_match", "bomb_defuses", "defuses_per_match",
-        "hs_percent", "kast_percent"
+        "nick", "matches", "win_rate", "kdr", "adr",
+        "kills_per_match", "deaths_per_match", "first_kills_per_match", "multi_kills_per_match",
+        "plants_per_match", "defuses_per_match", "hs_percent", "kast_percent",
+        "kills", "deaths", "first_kills", "multi_kills", "wins", "loss"
     ]
     renamed = {
         "nick": "Jogador",
         "matches": "Partidas",
-        "wins": "Vitórias",
-        "loss": "Derrotas",
         "win_rate": "Win Rate (%)",
         "kdr": "K/D",
         "adr": "ADR",
-        "kills": "Kills (Total)",
         "kills_per_match": "Kills/Jogo",
-        "deaths": "Mortes (Total)",
         "deaths_per_match": "Mortes/Jogo",
-        "first_kills": "FK (Total)",
         "first_kills_per_match": "FK/Jogo",
-        "multi_kills": "Multi (Total)",
         "multi_kills_per_match": "Multi/Jogo",
-        "bomb_plants": "Plants (Total)",
         "plants_per_match": "Plants/Jogo",
-        "bomb_defuses": "Defuses (Total)",
         "defuses_per_match": "Defuses/Jogo",
         "hs_percent": "HS %",
-        "kast_percent": "KAST %"
+        "kast_percent": "KAST %",
+        "kills": "Kills (Total)",
+        "deaths": "Mortes (Total)",
+        "first_kills": "FK (Total)",
+        "multi_kills": "Multi (Total)",
+        "wins": "Vitórias",
+        "loss": "Derrotas"
     }
-    styled_df = squad_df[cols_display].rename(columns=renamed).reset_index(drop=True)
+    styled_df = squad_df.sort_values(by=["kdr", "adr"], ascending=False)[cols_display].rename(columns=renamed).reset_index(drop=True)
     st.dataframe(styled_df, use_container_width=True)
 
 # -----------------------------------------------------------------------------
@@ -536,10 +540,15 @@ with tab_gc_advanced:
     if gc_squad_df.empty:
         st.info("ℹ️ Nenhuma partida recente com as novas estatísticas da Gamers Club encontrada para o período selecionado. Use o botão '🏅 Novas Stats GC' na barra lateral para sincronizar!")
     else:
-        # Destaques Rápidos
-        best_entry = gc_squad_df.sort_values(by="entry_success_rate", ascending=False).iloc[0] if "entry_success_rate" in gc_squad_df.columns else None
-        best_trader = gc_squad_df.sort_values(by="total_trades_made", ascending=False).iloc[0] if "total_trades_made" in gc_squad_df.columns else None
-        best_clutch = gc_squad_df.sort_values(by="total_clutches_won", ascending=False).iloc[0] if "total_clutches_won" in gc_squad_df.columns else None
+        # Destaques Rápidos Baseados em Médias e Eficiência
+        v_entry = gc_squad_df[gc_squad_df["total_entry_duels"] >= 3] if (gc_squad_df["total_entry_duels"] >= 3).any() else gc_squad_df
+        best_entry = v_entry.sort_values(by="entry_success_rate", ascending=False).iloc[0] if not v_entry.empty else None
+
+        best_trader = gc_squad_df.sort_values(by="avg_trades_per_match", ascending=False).iloc[0] if "avg_trades_per_match" in gc_squad_df.columns else None
+
+        v_clutch = gc_squad_df[gc_squad_df["total_clutches"] >= 2] if (gc_squad_df["total_clutches"] >= 2).any() else gc_squad_df
+        best_clutch = v_clutch.sort_values(by="clutch_win_rate", ascending=False).iloc[0] if not v_clutch.empty else None
+
         best_util = gc_squad_df.sort_values(by="avg_util_damage", ascending=False).iloc[0] if "avg_util_damage" in gc_squad_df.columns else None
         best_aim = gc_squad_df.sort_values(by="avg_accuracy", ascending=False).iloc[0] if "avg_accuracy" in gc_squad_df.columns else None
 
@@ -550,7 +559,7 @@ with tab_gc_advanced:
                 <div class='highlight-card'>
                     <b>🚪 Melhor Entry Fragger:</b><br>
                     <span style='font-size:1.25rem; font-weight:700; color:#ff7700;'>{best_entry['nick']}</span> — <b>{best_entry['entry_success_rate']:.1f}%</b>
-                    <div style='font-size:0.8rem; color:#94a3b8;'>Sucesso ({int(best_entry['total_entry_won'])}/{int(best_entry['total_entry_duels'])} duelos)</div>
+                    <div style='font-size:0.8rem; color:#94a3b8;'>Sucesso ({int(best_entry['total_entry_won'])}/{int(best_entry['total_entry_duels'])} duelos • {best_entry['avg_entry_per_round']:.2f}/round)</div>
                 </div>
                 """, unsafe_allow_html=True)
         with gc_h2:
@@ -558,8 +567,8 @@ with tab_gc_advanced:
                 st.markdown(f"""
                 <div class='highlight-card'>
                     <b>🔄 Rei dos Trades:</b><br>
-                    <span style='font-size:1.25rem; font-weight:700; color:#38bdf8;'>{best_trader['nick']}</span> — <b>{int(best_trader['total_trades_made'])}</b> trades
-                    <div style='font-size:0.8rem; color:#94a3b8;'>Tempo médio: {best_trader['avg_trade_time']:.1f}s</div>
+                    <span style='font-size:1.25rem; font-weight:700; color:#38bdf8;'>{best_trader['nick']}</span> — <b>{best_trader.get('avg_trades_per_match', 0):.1f}</b> trades/jogo
+                    <div style='font-size:0.8rem; color:#94a3b8;'>Taxa: {best_trader['avg_trade_rate']:.1f}% (Tempo: {best_trader['avg_trade_time']:.1f}s)</div>
                 </div>
                 """, unsafe_allow_html=True)
         with gc_h3:
@@ -567,8 +576,8 @@ with tab_gc_advanced:
                 st.markdown(f"""
                 <div class='highlight-card'>
                     <b>🏆 Rei do Clutch:</b><br>
-                    <span style='font-size:1.25rem; font-weight:700; color:#10b981;'>{best_clutch['nick']}</span> — <b>{int(best_clutch['total_clutches_won'])}</b> vitórias
-                    <div style='font-size:0.8rem; color:#94a3b8;'>Aproveitamento: {best_clutch['clutch_win_rate']:.0f}%</div>
+                    <span style='font-size:1.25rem; font-weight:700; color:#10b981;'>{best_clutch['nick']}</span> — <b>{best_clutch['clutch_win_rate']:.0f}%</b> aproveit.
+                    <div style='font-size:0.8rem; color:#94a3b8;'>Média: {best_clutch.get('avg_clutches_per_match', 0):.2f}/jogo ({int(best_clutch['total_clutches_won'])} vitórias)</div>
                 </div>
                 """, unsafe_allow_html=True)
         with gc_h4:
@@ -577,7 +586,7 @@ with tab_gc_advanced:
                 <div class='highlight-card'>
                     <b>💣 Mestre Utilitário:</b><br>
                     <span style='font-size:1.25rem; font-weight:700; color:#f59e0b;'>{best_util['nick']}</span> — <b>{best_util['avg_util_damage']:.0f}</b> dmg/jogo
-                    <div style='font-size:0.8rem; color:#94a3b8;'>{int(best_util['total_enemies_flashed'])} inimigos cegados</div>
+                    <div style='font-size:0.8rem; color:#94a3b8;'>Média: {best_util.get('avg_enemies_flashed_per_match', 0):.1f} cegados/jogo</div>
                 </div>
                 """, unsafe_allow_html=True)
         with gc_h5:
@@ -585,8 +594,8 @@ with tab_gc_advanced:
                 st.markdown(f"""
                 <div class='highlight-card'>
                     <b>🎯 Mira Mais Precisa:</b><br>
-                    <span style='font-size:1.25rem; font-weight:700; color:#ec4899;'>{best_aim['nick']}</span> — <b>{best_aim['avg_accuracy']:.1f}%</b>
-                    <div style='font-size:0.8rem; color:#94a3b8;'>Head Acc: {best_aim['avg_head_acc']:.1f}%</div>
+                    <span style='font-size:1.25rem; font-weight:700; color:#ec4899;'>{best_aim['nick']}</span> — <b>{best_aim['avg_accuracy']:.1f}%</b> precisão
+                    <div style='font-size:0.8rem; color:#94a3b8;'>Head Acc: {best_aim['avg_head_acc']:.1f}% • {best_aim['avg_kpr']:.2f} KPR</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -624,18 +633,20 @@ with tab_gc_advanced:
             st.markdown("#### 🔄 Eficiência e Velocidade de Trade (Vingar Parceiro)")
             col_trd_tbl, col_trd_gra = st.columns([1.1, 0.9])
             with col_trd_tbl:
-                t_df = gc_squad_df[["nick", "analyzed_matches", "total_trades_made", "total_traded_deaths", "avg_trade_rate", "avg_trade_time"]].copy()
-                t_df.columns = ["Jogador", "Jogos", "Trades Feitos", "Mortes Trocadas", "Taxa de Troca (%)", "Tempo Médio (s)"]
-                t_df["Taxa de Troca (%)"] = t_df["Taxa de Troca (%)"].apply(lambda v: f"{v:.1f}%")
+                t_cols = ["nick", "analyzed_matches", "avg_trades_per_match", "avg_trade_rate", "avg_trade_time", "total_trades_made", "total_traded_deaths"]
+                t_df = gc_squad_df[[c for c in t_cols if c in gc_squad_df.columns]].copy()
+                t_df.columns = ["Jogador", "Jogos", "Trades/Jogo", "Taxa Troca (%)", "Tempo Médio (s)", "Trades (Total)", "Mortes Trocadas"]
+                t_df["Taxa Troca (%)"] = t_df["Taxa Troca (%)"].apply(lambda v: f"{v:.1f}%")
                 t_df["Tempo Médio (s)"] = t_df["Tempo Médio (s)"].apply(lambda v: f"{v:.1f}s")
                 st.dataframe(t_df, use_container_width=True)
             with col_trd_gra:
                 fig_t = px.bar(
-                    gc_squad_df, x="nick", y="avg_trade_time",
-                    title="Tempo Médio para Vingar o Aliado (Menor é Melhor)",
-                    color="avg_trade_time", color_continuous_scale="Viridis_r", text="avg_trade_time"
+                    gc_squad_df.sort_values(by="avg_trades_per_match", ascending=False),
+                    x="nick", y="avg_trades_per_match",
+                    title="Média de Trades Feitos por Jogo (Maior é Melhor)",
+                    color="avg_trades_per_match", color_continuous_scale="Viridis", text="avg_trades_per_match"
                 )
-                fig_t.update_traces(texttemplate="%{text:.1f}s", textposition="outside")
+                fig_t.update_traces(texttemplate="%{text:.1f} / j", textposition="outside")
                 fig_t.update_layout(template="plotly_dark", plot_bgcolor="#111827", paper_bgcolor="#111827", margin=dict(l=20, r=20, t=35, b=20))
                 st.plotly_chart(fig_t, use_container_width=True)
 
@@ -643,20 +654,21 @@ with tab_gc_advanced:
             st.markdown("#### 🏆 Desempenho em Situações de Clutch")
             col_clt_tbl, col_clt_gra = st.columns([1.1, 0.9])
             with col_clt_tbl:
-                c_df = gc_squad_df[["nick", "total_clutches", "total_clutches_won", "clutch_win_rate", "total_1v1_won", "total_1v1_played", "total_1vn_won", "total_1vn_played"]].copy()
+                c_df = gc_squad_df[["nick", "analyzed_matches", "total_clutches", "total_clutches_won", "avg_clutches_per_match", "clutch_win_rate", "total_1v1_won", "total_1v1_played", "total_1vn_won", "total_1vn_played"]].copy()
                 c_df["1v1 (Venc/Total)"] = c_df.apply(lambda r: f"{int(r['total_1v1_won'])}/{int(r['total_1v1_played'])}", axis=1)
                 c_df["1vN (Venc/Total)"] = c_df.apply(lambda r: f"{int(r['total_1vn_won'])}/{int(r['total_1vn_played'])}", axis=1)
-                c_df = c_df[["nick", "total_clutches", "total_clutches_won", "clutch_win_rate", "1v1 (Venc/Total)", "1vN (Venc/Total)"]]
-                c_df.columns = ["Jogador", "Situações", "Vencidos", "Aproveitamento (%)", "1v1 (Venc/Total)", "1vN (Venc/Total)"]
+                c_df = c_df[["nick", "analyzed_matches", "clutch_win_rate", "avg_clutches_per_match", "total_clutches_won", "total_clutches", "1v1 (Venc/Total)", "1vN (Venc/Total)"]]
+                c_df.columns = ["Jogador", "Jogos", "Aproveitamento (%)", "Clutches/Jogo", "Vencidos", "Situações", "1v1 (Venc/Total)", "1vN (Venc/Total)"]
                 c_df["Aproveitamento (%)"] = c_df["Aproveitamento (%)"].apply(lambda v: f"{v:.1f}%")
                 st.dataframe(c_df, use_container_width=True)
             with col_clt_gra:
                 fig_c = px.bar(
-                    gc_squad_df, x="nick", y="total_clutches_won",
-                    title="Total de Clutches Vencidos pelo Squad",
-                    color="total_clutches_won", color_continuous_scale="Tealgrn", text="total_clutches_won"
+                    gc_squad_df.sort_values(by="clutch_win_rate", ascending=False),
+                    x="nick", y="clutch_win_rate",
+                    title="Taxa de Aproveitamento em Clutches (%) - Maior é Melhor",
+                    color="clutch_win_rate", color_continuous_scale="Tealgrn", text="clutch_win_rate"
                 )
-                fig_c.update_traces(textposition="outside")
+                fig_c.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
                 fig_c.update_layout(template="plotly_dark", plot_bgcolor="#111827", paper_bgcolor="#111827", margin=dict(l=20, r=20, t=35, b=20))
                 st.plotly_chart(fig_c, use_container_width=True)
 
@@ -664,16 +676,18 @@ with tab_gc_advanced:
             st.markdown("#### 💣 Utilitárias, Granadas e Assistências com Flash")
             col_utl_tbl, col_utl_gra = st.columns([1.1, 0.9])
             with col_utl_tbl:
-                u_df = gc_squad_df[["nick", "total_util_damage", "avg_util_damage", "total_flash_assists", "total_enemies_flashed", "total_grenades", "avg_damage_per_grenade"]].copy()
-                u_df.columns = ["Jogador", "Dano Total Util", "Dano Médio/Jogo", "Flash Assists", "Inimigos Cegados", "Granadas", "Dano/Granada"]
+                u_cols = ["nick", "analyzed_matches", "avg_util_damage", "avg_damage_per_grenade", "avg_enemies_flashed_per_match", "avg_grenades_per_match", "total_util_damage", "total_flash_assists"]
+                u_df = gc_squad_df[[c for c in u_cols if c in gc_squad_df.columns]].copy()
+                u_df.columns = ["Jogador", "Jogos", "Dano Médio/Jogo", "Dano/Granada", "Cegados/Jogo", "Granadas/Jogo", "Dano Total Util", "Flash Assists"]
                 st.dataframe(u_df, use_container_width=True)
             with col_utl_gra:
                 fig_u = px.bar(
-                    gc_squad_df, x="nick", y="total_enemies_flashed",
-                    title="Total de Inimigos Cegados com Granadas de Luz",
-                    color="total_enemies_flashed", color_continuous_scale="Sunset", text="total_enemies_flashed"
+                    gc_squad_df.sort_values(by="avg_util_damage", ascending=False),
+                    x="nick", y="avg_util_damage",
+                    title="Dano Médio de Utilitária por Partida (dmg / jogo)",
+                    color="avg_util_damage", color_continuous_scale="Sunset", text="avg_util_damage"
                 )
-                fig_u.update_traces(textposition="outside")
+                fig_u.update_traces(texttemplate="%{text:.0f} dmg", textposition="outside")
                 fig_u.update_layout(template="plotly_dark", plot_bgcolor="#111827", paper_bgcolor="#111827", margin=dict(l=20, r=20, t=35, b=20))
                 st.plotly_chart(fig_u, use_container_width=True)
 

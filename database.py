@@ -531,7 +531,7 @@ def get_core_players_stats(month: Optional[str] = None, platform: str = "TODOS",
     JOIN monthly_stats s ON p.player_id = s.player_id
     WHERE {where_clause}
     GROUP BY p.nick, p.player_id, p.level, p.is_main_user
-    ORDER BY matches DESC, kdr DESC
+    ORDER BY kdr DESC, adr DESC, matches DESC
     """
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
@@ -1042,12 +1042,14 @@ def get_gc_advanced_squad_stats(month: Optional[str] = None, db_path: str = DB_P
         ROUND(AVG(NULLIF(m.entry_per_round, 0.0)), 2) as avg_entry_per_round,
         -- Trades
         SUM(m.trades_made) as total_trades_made,
+        ROUND(CAST(SUM(m.trades_made) AS FLOAT) / COUNT(m.match_id), 1) as avg_trades_per_match,
         SUM(m.traded_deaths) as total_traded_deaths,
         ROUND(AVG(NULLIF(m.trade_rate, 0.0)), 1) as avg_trade_rate,
         ROUND(AVG(NULLIF(m.trade_avg_time, 0.0)), 1) as avg_trade_time,
         -- Clutch
         SUM(m.clutch_situations) as total_clutches,
         SUM(m.clutch_won) as total_clutches_won,
+        ROUND(CAST(SUM(m.clutch_won) AS FLOAT) / COUNT(m.match_id), 2) as avg_clutches_per_match,
         ROUND(CAST(SUM(m.clutch_won) AS FLOAT) / NULLIF(SUM(m.clutch_situations), 0) * 100, 1) as clutch_win_rate,
         SUM(m.clutch_1v1_won) as total_1v1_won,
         SUM(m.clutch_1v1_total) as total_1v1_played,
@@ -1057,8 +1059,11 @@ def get_gc_advanced_squad_stats(month: Optional[str] = None, db_path: str = DB_P
         SUM(m.utility_damage) as total_util_damage,
         ROUND(AVG(NULLIF(m.utility_damage, 0)), 1) as avg_util_damage,
         SUM(m.flash_assists) as total_flash_assists,
+        ROUND(CAST(SUM(m.flash_assists) AS FLOAT) / COUNT(m.match_id), 2) as avg_flash_assists_per_match,
         SUM(m.enemies_flashed) as total_enemies_flashed,
+        ROUND(CAST(SUM(m.enemies_flashed) AS FLOAT) / COUNT(m.match_id), 1) as avg_enemies_flashed_per_match,
         SUM(m.grenades_thrown) as total_grenades,
+        ROUND(CAST(SUM(m.grenades_thrown) AS FLOAT) / COUNT(m.match_id), 1) as avg_grenades_per_match,
         ROUND(AVG(NULLIF(m.damage_per_grenade, 0.0)), 1) as avg_damage_per_grenade,
         -- Mira
         ROUND(AVG(NULLIF(m.aim_accuracy, 0.0)), 1) as avg_accuracy,
