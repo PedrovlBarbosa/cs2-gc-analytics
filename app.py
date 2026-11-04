@@ -7,21 +7,50 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import database
-try:
-    importlib.reload(database)
-except Exception:
-    pass
 from database import (
     CORE_PLAYERS,
-    get_all_months,
-    get_core_players_stats,
-    get_core_squad_totals,
-    get_player_history,
-    get_matches_by_month,
-    get_telemetry_stats,
-    get_gc_advanced_squad_stats,
-    get_gc_match_scoreboard
+    get_all_months as _db_get_all_months,
+    get_core_players_stats as _db_get_core_players_stats,
+    get_core_squad_totals as _db_get_core_squad_totals,
+    get_player_history as _db_get_player_history,
+    get_matches_by_month as _db_get_matches_by_month,
+    get_telemetry_stats as _db_get_telemetry_stats,
+    get_gc_advanced_squad_stats as _db_get_gc_advanced_squad_stats,
+    get_gc_match_scoreboard as _db_get_gc_match_scoreboard
 )
+
+# Funções cacheadas para resposta instantânea (TTL = 10 minutos)
+@st.cache_data(ttl=600, show_spinner=False)
+def get_all_months(*args, **kwargs):
+    return _db_get_all_months(*args, **kwargs)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_core_players_stats(*args, **kwargs):
+    return _db_get_core_players_stats(*args, **kwargs)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_core_squad_totals(*args, **kwargs):
+    return _db_get_core_squad_totals(*args, **kwargs)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_player_history(*args, **kwargs):
+    return _db_get_player_history(*args, **kwargs)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_matches_by_month(*args, **kwargs):
+    return _db_get_matches_by_month(*args, **kwargs)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_telemetry_stats(*args, **kwargs):
+    return _db_get_telemetry_stats(*args, **kwargs)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_gc_advanced_squad_stats(*args, **kwargs):
+    return _db_get_gc_advanced_squad_stats(*args, **kwargs)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_gc_match_scoreboard(*args, **kwargs):
+    return _db_get_gc_match_scoreboard(*args, **kwargs)
 
 # Configuração da Página
 st.set_page_config(
@@ -1259,7 +1288,9 @@ with tab_matches:
                     "qtd": len(grp)
                 })
             m_display = pd.DataFrame(grouped_records)
-            st.caption(f"Mostrando **{len(m_display)}** partidas disputadas pelo time no período.")
+            total_time_matches = len(m_display)
+            limit_display = min(100, total_time_matches)
+            st.caption(f"Exibindo as **{limit_display}** partidas mais recentes (de um total de {total_time_matches} no período).")
             cols = ["match_id", "plataforma", "resultado", "map", "placar", "jogadores"]
             renamed = {
                 "match_id": "ID Partida",
@@ -1269,7 +1300,7 @@ with tab_matches:
                 "placar": "Placar",
                 "jogadores": "Jogadores Presentes"
             }
-            st.dataframe(m_display[cols].rename(columns=renamed), use_container_width=True)
+            st.dataframe(m_display.head(limit_display)[cols].rename(columns=renamed), use_container_width=True)
         else:
             st.caption(f"Mostrando **{len(matches_df)}** partidas registradas para {selected_p_match}.")
             m_display = matches_df.copy()

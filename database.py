@@ -10,8 +10,14 @@ CORE_PLAYERS = [
 ]
 
 def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA cache_size=-64000;")
+    except Exception:
+        pass
     return conn
 
 def init_db(db_path: str = DB_PATH):
@@ -213,6 +219,13 @@ def init_db(db_path: str = DB_PATH):
     for col, c_type in monthly_migrations.items():
         if col not in existing_m_cols:
             cursor.execute(f"ALTER TABLE monthly_stats ADD COLUMN {col} {c_type}")
+
+    # Índices para acelerar drasticamente consultas e filtros
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_player_month_plat ON matches(player_id, month, platform);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_match_id ON matches(match_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_platform ON matches(platform);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_monthly_stats_plat_month ON monthly_stats(platform, month);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_gc_scoreboard_mid ON gc_match_scoreboard(match_id);")
 
     conn.commit()
     conn.close()
