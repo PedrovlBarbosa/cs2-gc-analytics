@@ -52,6 +52,21 @@ def get_gc_advanced_squad_stats(*args, **kwargs):
 def get_gc_match_scoreboard(*args, **kwargs):
     return _db_get_gc_match_scoreboard(*args, **kwargs)
 
+PLAYER_NAME_TO_ID = {
+    'KrannDy': 108698,
+    'Aquarista': 87484,
+    'Art': 108939,
+    'Cherki': 540777,
+    'Death': 318687,
+    'Kinha': 108940,
+    'mch': 89302,
+    'The merdas': 2502581,
+    'Coquinha': 2492447,
+    'Allan Daniel': 2650509,
+    'Daniel': 2734005
+}
+
+
 # Configuração da Página
 st.set_page_config(
     page_title="CS2 - Squad Analytics",
@@ -264,8 +279,8 @@ squad_df["multi_kills_per_match"] = (squad_df["multi_kills"] / m_denom).round(2)
 squad_df["plants_per_match"] = (squad_df["bomb_plants"] / m_denom).round(2)
 squad_df["defuses_per_match"] = (squad_df["bomb_defuses"] / m_denom).round(2)
 
-# Abas Principais
-tab_squad_totals, tab_comparative, tab_gc_advanced, tab_telemetry, tab_individual, tab_maps, tab_matches = st.tabs([
+# Abas Principais com Renderização Sob Demanda (Lazy Loading: Evita tela branca e saturação de memória)
+tabs_list = [
     "🔥 Conjunto de Todos (Squad)",
     "⚔️ Comparativo do Squad",
     "🏅 Novas Estatísticas GC",
@@ -273,12 +288,21 @@ tab_squad_totals, tab_comparative, tab_gc_advanced, tab_telemetry, tab_individua
     "👤 Perfil Individual",
     "🗺️ Análise de Mapas",
     "📜 Partidas Recentes"
-])
+]
+
+if hasattr(st, "segmented_control"):
+    active_tab = st.segmented_control("Navegação do Dashboard", options=tabs_list, default=tabs_list[0], label_visibility="collapsed")
+    if not active_tab:
+        active_tab = tabs_list[0]
+else:
+    active_tab = st.radio("Navegação do Dashboard", options=tabs_list, index=0, horizontal=True, label_visibility="collapsed")
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # TAB 1: CONJUNTO DE TODOS (SQUAD COLETIVO)
 # -----------------------------------------------------------------------------
-with tab_squad_totals:
+if active_tab == "🔥 Conjunto de Todos (Squad)":
     st.subheader(f"📊 Totais Consolidados do Conjunto de Todos os Jogadores ({period_label})")
     st.caption("Soma e médias acumuladas de todas as partidas disputadas pelo grupo.")
     
@@ -405,7 +429,7 @@ with tab_squad_totals:
 # -----------------------------------------------------------------------------
 # TAB 2: COMPARATIVO DOS 7 JOGADORES
 # -----------------------------------------------------------------------------
-with tab_comparative:
+elif active_tab == "⚔️ Comparativo do Squad":
     st.subheader(f"⚔️ Comparativo Direto entre os 7 Jogadores ({period_label})")
 
     # Considera jogadores com pelo menos um volume mínimo de jogos para cálculo justo de liderança por média
@@ -560,7 +584,7 @@ with tab_comparative:
 # -----------------------------------------------------------------------------
 # TAB 3: NOVAS ESTATÍSTICAS GAMERS CLUB (Entries, Trades, Clutch, Utilitárias e Mira)
 # -----------------------------------------------------------------------------
-with tab_gc_advanced:
+elif active_tab == "🏅 Novas Estatísticas GC":
     st.subheader(f"🏅 Novas Estatísticas Oficiais da Gamers Club ({period_label})")
     st.caption("Estatísticas nativas extraídas diretamente da Gamers Club: Duelos de Abertura (Entries), Trocas de Abate (Trades), Situações Decisivas (Clutch), Utilitárias e Precisão de Mira.")
 
@@ -747,7 +771,7 @@ with tab_gc_advanced:
 # -----------------------------------------------------------------------------
 # TAB: TELEMETRIA & MIRA (LEETIFY)
 # -----------------------------------------------------------------------------
-with tab_telemetry:
+elif active_tab == "🎯 Telemetria Avançada (Leetify)":
     st.subheader(f"🎯 Telemetria Avançada & Análise de Mira ({period_label})")
     st.caption("Métricas extraídas via processamento telemétrico de demos (Leetify) cobrindo tempo de reação, abertura de mira, counter-strafe, trocas e utilitários.")
 
@@ -963,7 +987,7 @@ with tab_telemetry:
 # -----------------------------------------------------------------------------
 # TAB 4: PERFIL INDIVIDUAL DETALHADO
 # -----------------------------------------------------------------------------
-with tab_individual:
+elif active_tab == "👤 Perfil Individual":
     selected_player_nick = st.selectbox("Selecione o Jogador para ver o Perfil Detalhado:", options=CORE_PLAYERS, index=0)
     
     player_row = squad_df[squad_df["nick"] == selected_player_nick]
@@ -1176,25 +1200,11 @@ with tab_individual:
             else:
                 st.info("Sem registro de Hitbox para este jogador.")
 
-# Mapeamento de Nick para ID
-PLAYER_NAME_TO_ID = {
-    'KrannDy': 108698,
-    'Aquarista': 87484,
-    'Art': 108939,
-    'Cherki': 540777,
-    'Death': 318687,
-    'Kinha': 108940,
-    'mch': 89302,
-    'The merdas': 2502581,
-    'Coquinha': 2492447,
-    'Allan Daniel': 2650509,
-    'Daniel': 2734005
-}
 
 # -----------------------------------------------------------------------------
 # TAB 4: ANÁLISE DE MAPAS
 # -----------------------------------------------------------------------------
-with tab_maps:
+elif active_tab == "🗺️ Análise de Mapas":
     st.subheader(f"🗺️ Desempenho por Mapa ({period_label})")
     
     col_map_sel, _ = st.columns([1, 2])
@@ -1249,7 +1259,7 @@ with tab_maps:
 # -----------------------------------------------------------------------------
 # TAB 5: PARTIDAS RECENTES
 # -----------------------------------------------------------------------------
-with tab_matches:
+elif active_tab == "📜 Partidas Recentes":
     st.subheader(f"📜 Histórico de Partidas ({period_label})")
     
     col_p_match, _ = st.columns([1, 2])
