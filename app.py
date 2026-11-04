@@ -125,7 +125,10 @@ st.markdown("""
 
 # Sidebar
 with st.sidebar:
-    st.image("https://gcv1-assets.gamersclub.com.br/assets/images/perfil/icon-lobby.png", width=65)
+    try:
+        st.image("https://gcv1-assets.gamersclub.com.br/assets/images/perfil/icon-lobby.png", width=65)
+    except Exception:
+        pass
     st.title("Squad Analytics")
     st.caption("Painel Exclusivo do Squad de Jogadores")
     
