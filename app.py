@@ -607,8 +607,9 @@ elif active_tab == "🏅 Novas Estatísticas GC":
 
         best_util = gc_squad_df.sort_values(by="avg_util_damage", ascending=False).iloc[0] if "avg_util_damage" in gc_squad_df.columns else None
         best_aim = gc_squad_df.sort_values(by="avg_accuracy", ascending=False).iloc[0] if "avg_accuracy" in gc_squad_df.columns else None
+        best_swing = gc_squad_df.sort_values(by="avg_round_swing", ascending=False).iloc[0] if "avg_round_swing" in gc_squad_df.columns and (gc_squad_df["avg_round_swing"] != 0).any() else None
 
-        gc_h1, gc_h2, gc_h3, gc_h4, gc_h5 = st.columns(5)
+        gc_h1, gc_h2, gc_h3, gc_h4, gc_h5, gc_h6 = st.columns(6)
         with gc_h1:
             if best_entry is not None:
                 st.markdown(f"""
@@ -654,16 +655,28 @@ elif active_tab == "🏅 Novas Estatísticas GC":
                     <div style='font-size:0.8rem; color:#94a3b8;'>Head Acc: {best_aim['avg_head_acc']:.1f}% • {best_aim['avg_kpr']:.2f} KPR</div>
                 </div>
                 """, unsafe_allow_html=True)
+        with gc_h6:
+            if best_swing is not None:
+                s_val = best_swing.get('avg_round_swing', 0.0)
+                s_sign = "+" if s_val > 0 else ""
+                st.markdown(f"""
+                <div class='highlight-card'>
+                    <b>📈 Maior Round Swing:</b><br>
+                    <span style='font-size:1.25rem; font-weight:700; color:#a855f7;'>{best_swing['nick']}</span> — <b>{s_sign}{s_val:.4f}</b>
+                    <div style='font-size:0.8rem; color:#94a3b8;'>Impacto nos rounds (Total: {s_sign}{best_swing.get('total_round_swing', 0.0):.3f})</div>
+                </div>
+                """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # 5 Sub-abas correspondentes às telas oficiais da Gamers Club
-        sub_ent, sub_trd, sub_clt, sub_utl, sub_aim = st.tabs([
+        # 6 Sub-abas correspondentes às telas oficiais da Gamers Club
+        sub_ent, sub_trd, sub_clt, sub_utl, sub_aim, sub_swg = st.tabs([
             "🚪 Entries (Duelos de Abertura)",
             "🔄 Trades (Trocas de Abate)",
             "🏆 Clutch (Situações Decisivas)",
             "💣 Utilitárias",
-            "🎯 Mira & Armas"
+            "🎯 Mira & Armas",
+            "📈 Round Swing (Impacto de Rounds)"
         ])
 
         with sub_ent:
@@ -766,6 +779,30 @@ elif active_tab == "🏅 Novas Estatísticas GC":
                 )
                 fig_a.update_layout(template="plotly_dark", plot_bgcolor="#111827", paper_bgcolor="#111827", margin=dict(l=20, r=20, t=35, b=20))
                 st.plotly_chart(fig_a, use_container_width=True)
+
+        with sub_swg:
+            st.markdown("#### 📈 Round Swing Oficial da Gamers Club (Impacto nos Rounds)")
+            st.caption("O **Round Swing** mede a probabilidade extra de vitória que as ações do jogador trouxeram para o time a cada round. Valores positivos indicam que suas jogadas viraram rounds a favor do seu time.")
+            col_swg_tbl, col_swg_gra = st.columns([1.1, 0.9])
+            with col_swg_tbl:
+                sw_df = gc_squad_df[["nick", "analyzed_matches", "avg_gc_rating", "avg_round_swing", "total_round_swing"]].copy()
+                sw_df = sw_df.sort_values(by="avg_round_swing", ascending=False)
+                sw_df.columns = ["Jogador", "Partidas", "GC Rating", "Swing Médio / Jogo", "Swing Acumulado"]
+                sw_df["Swing Médio / Jogo"] = sw_df["Swing Médio / Jogo"].apply(lambda v: f"{'+' if v > 0 else ''}{v:.4f}")
+                sw_df["Swing Acumulado"] = sw_df["Swing Acumulado"].apply(lambda v: f"{'+' if v > 0 else ''}{v:.3f}")
+                st.dataframe(sw_df, use_container_width=True)
+            with col_swg_gra:
+                chart_df = gc_squad_df.sort_values(by="avg_round_swing", ascending=False).copy()
+                chart_df["color_swing"] = chart_df["avg_round_swing"].apply(lambda v: "#10b981" if v >= 0 else "#ef4444")
+                fig_swg = px.bar(
+                    chart_df, x="nick", y="avg_round_swing",
+                    title="Média de Round Swing por Jogador",
+                    color="color_swing",
+                    color_discrete_map="identity",
+                    labels={"avg_round_swing": "Round Swing Médio", "nick": "Jogador"}
+                )
+                fig_swg.update_layout(template="plotly_dark", plot_bgcolor="#111827", paper_bgcolor="#111827", margin=dict(l=20, r=20, t=35, b=20), showlegend=False)
+                st.plotly_chart(fig_swg, use_container_width=True)
 
 
 # -----------------------------------------------------------------------------
@@ -1478,7 +1515,8 @@ elif active_tab == "📜 Partidas Recentes":
                         g_df["DIFF"] = g_df.apply(lambda r: f"+{r['kills'] - r['deaths']}" if (r['kills'] - r['deaths']) > 0 else str(r['kills'] - r['deaths']), axis=1)
                         g_df["KAST"] = g_df["kast"].apply(lambda v: f"{v:.0f}%")
                         g_df["GC RATING"] = g_df["gc_rating"].apply(lambda v: f"{v:.2f}")
-                        cols_g = ["Jogador", "Nível", "kills", "assists", "deaths", "DIFF", "adr", "kdr", "KAST", "GC RATING"]
+                        g_df["ROUND SWING"] = g_df["round_swing"].apply(lambda v: f"{'+' if v > 0 else ''}{v:.4f}" if v != 0 else "-")
+                        cols_g = ["Jogador", "Nível", "kills", "assists", "deaths", "DIFF", "adr", "kdr", "KAST", "ROUND SWING", "GC RATING"]
                         ren_g = {"kills": "K", "assists": "A", "deaths": "D", "adr": "ADR", "kdr": "KDR"}
                         st.dataframe(g_df[cols_g].rename(columns=ren_g).reset_index(drop=True), use_container_width=True)
 

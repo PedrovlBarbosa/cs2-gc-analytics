@@ -1045,8 +1045,10 @@ def get_gc_advanced_squad_stats(month: Optional[str] = None, db_path: str = DB_P
         p.player_id,
         p.level,
         COUNT(m.match_id) as analyzed_matches,
-        -- Geral
+        -- Geral & Impacto
         ROUND(AVG(NULLIF(m.gc_rating, 0.0)), 2) as avg_gc_rating,
+        ROUND(AVG(m.round_swing), 4) as avg_round_swing,
+        ROUND(SUM(m.round_swing), 3) as total_round_swing,
         -- Entries
         SUM(m.entry_duels) as total_entry_duels,
         SUM(m.entry_won) as total_entry_won,
