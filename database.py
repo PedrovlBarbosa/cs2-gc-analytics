@@ -692,6 +692,125 @@ def get_matches_by_month(month: Optional[str] = None, player_id: Optional[int] =
     return df
 
 
+def get_map_stats_by_player(
+    month: Optional[str] = None,
+    player_id: Optional[int] = None,
+    platform: str = "TODOS",
+    db_path: str = DB_PATH,
+    **kwargs
+) -> pd.DataFrame:
+    """
+    Retorna as estatísticas detalhadas por mapa para um ou todos os jogadores do Core Squad.
+    Calcula: partidas, vitórias, derrotas, win_rate, kills, deaths, kdr, adr, kills_per_match e hs_percent.
+    """
+    conn = get_connection(db_path)
+    conditions = ["m.map IS NOT NULL", "m.map != ''"]
+    params = []
+    
+    if player_id:
+        conditions.append("m.player_id = ?")
+        params.append(player_id)
+    else:
+        placeholders = ",".join(["?" for _ in CORE_PLAYERS])
+        conditions.append(f"p.nick IN ({placeholders})")
+        params.extend(list(CORE_PLAYERS))
+        
+    if month and month != "Todos":
+        conditions.append("m.month = ?")
+        params.append(month)
+        
+    if platform and platform.upper() != "TODOS":
+        conditions.append("m.platform = ?")
+        params.append(platform.upper())
+        
+    where_c = " AND ".join(conditions)
+    
+    query = f"""
+    SELECT 
+        p.nick,
+        p.player_id,
+        m.map,
+        COUNT(m.match_id) as matches,
+        SUM(m.win) as wins,
+        COUNT(m.match_id) - SUM(m.win) as losses,
+        ROUND(CAST(SUM(m.win) AS FLOAT) / COUNT(m.match_id) * 100, 1) as win_rate,
+        SUM(m.kills) as kills,
+        SUM(m.deaths) as deaths,
+        ROUND(CAST(SUM(m.kills) AS FLOAT) / NULLIF(SUM(m.deaths), 0), 2) as kdr,
+        ROUND(AVG(NULLIF(m.adr, 0)), 1) as adr,
+        ROUND(CAST(SUM(m.kills) AS FLOAT) / NULLIF(COUNT(CASE WHEN m.kills > 0 THEN 1 END), 0), 1) as kills_per_match,
+        ROUND(AVG(NULLIF(m.hs_percent, 0)), 1) as hs_percent
+    FROM matches m
+    JOIN players p ON m.player_id = p.player_id
+    WHERE {where_c}
+    GROUP BY p.nick, p.player_id, m.map
+    ORDER BY matches DESC
+    """
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
+
+
+def get_squad_map_stats(
+    month: Optional[str] = None,
+    platform: str = "TODOS",
+    db_path: str = DB_PATH,
+    **kwargs
+) -> pd.DataFrame:
+    """
+    Retorna as estatísticas consolidadas e deduplicadas por mapa para o Squad como um todo.
+    """
+    conn = get_connection(db_path)
+    conditions = ["m.map IS NOT NULL", "m.map != ''"]
+    params = []
+    
+    placeholders = ",".join(["?" for _ in CORE_PLAYERS])
+    conditions.append(f"p.nick IN ({placeholders})")
+    params.extend(list(CORE_PLAYERS))
+        
+    if month and month != "Todos":
+        conditions.append("m.month = ?")
+        params.append(month)
+        
+    if platform and platform.upper() != "TODOS":
+        conditions.append("m.platform = ?")
+        params.append(platform.upper())
+        
+    where_c = " AND ".join(conditions)
+    
+    query = f"""
+    WITH unique_matches AS (
+        SELECT 
+            m.match_id,
+            m.map,
+            MAX(m.win) as win,
+            SUM(m.kills) as team_kills,
+            SUM(m.deaths) as team_deaths,
+            AVG(NULLIF(m.adr, 0)) as team_adr
+        FROM matches m
+        JOIN players p ON m.player_id = p.player_id
+        WHERE {where_c}
+        GROUP BY m.match_id, m.map
+    )
+    SELECT 
+        map,
+        COUNT(match_id) as matches,
+        SUM(win) as wins,
+        COUNT(match_id) - SUM(win) as losses,
+        ROUND(CAST(SUM(win) AS FLOAT) / COUNT(match_id) * 100, 1) as win_rate,
+        SUM(team_kills) as kills,
+        SUM(team_deaths) as deaths,
+        ROUND(CAST(SUM(team_kills) AS FLOAT) / NULLIF(SUM(team_deaths), 0), 2) as kdr,
+        ROUND(AVG(NULLIF(team_adr, 0)), 1) as adr
+    FROM unique_matches
+    GROUP BY map
+    ORDER BY matches DESC
+    """
+    df = pd.read_sql_query(query, conn, params=params)
+    conn.close()
+    return df
+
+
 def get_telemetry_stats(month: Optional[str] = None, platform: str = "TODOS", db_path: str = DB_PATH, **kwargs) -> pd.DataFrame:
     """
     Retorna estatísticas médias de telemetria avançada (Leetify) para os jogadores do Core Squad.

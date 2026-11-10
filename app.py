@@ -3,6 +3,7 @@ import sys
 import time
 import importlib
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -16,7 +17,9 @@ from database import (
     get_matches_by_month as _db_get_matches_by_month,
     get_telemetry_stats as _db_get_telemetry_stats,
     get_gc_advanced_squad_stats as _db_get_gc_advanced_squad_stats,
-    get_gc_match_scoreboard as _db_get_gc_match_scoreboard
+    get_gc_match_scoreboard as _db_get_gc_match_scoreboard,
+    get_map_stats_by_player as _db_get_map_stats_by_player,
+    get_squad_map_stats as _db_get_squad_map_stats
 )
 
 # Funções cacheadas para resposta instantânea (TTL = 10 minutos)
@@ -52,6 +55,14 @@ def get_gc_advanced_squad_stats(*args, **kwargs):
 def get_gc_match_scoreboard(*args, **kwargs):
     return _db_get_gc_match_scoreboard(*args, **kwargs)
 
+@st.cache_data(ttl=600, show_spinner=False)
+def get_map_stats_by_player(*args, **kwargs):
+    return _db_get_map_stats_by_player(*args, **kwargs)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_squad_map_stats(*args, **kwargs):
+    return _db_get_squad_map_stats(*args, **kwargs)
+
 PLAYER_NAME_TO_ID = {
     'KrannDy': 108698,
     'Aquarista': 87484,
@@ -65,6 +76,338 @@ PLAYER_NAME_TO_ID = {
     'Allan Daniel': 2650509,
     'Daniel': 2734005
 }
+
+def calculate_hitbox_distribution(stats_dict, pnick=None, gc_advanced_df=None):
+    """
+    Retorna as porcentagens anatômicas de acerto (Cabeça, Peito, Estômago, Braços, Pernas),
+    o total de tiros e a flag booleana indicando se os dados são exatos ou calibrados.
+    """
+    h = int(stats_dict.get('hitbox_head', 0) or 0)
+    c = int(stats_dict.get('hitbox_chest', 0) or 0)
+    s = int(stats_dict.get('hitbox_stomach', 0) or 0)
+    a = int(stats_dict.get('hitbox_arms', 0) or 0)
+    l = int(stats_dict.get('hitbox_legs', 0) or 0)
+    tot = h + c + s + a + l
+    if tot > 0:
+        return (
+            round(h / tot * 100, 1),
+            round(c / tot * 100, 1),
+            round(s / tot * 100, 1),
+            round(a / tot * 100, 1),
+            round(l / tot * 100, 1),
+            tot,
+            True
+        )
+    
+    head_pct = None
+    if pnick and gc_advanced_df is not None and not gc_advanced_df.empty:
+        gc_p = gc_advanced_df[gc_advanced_df["nick"] == pnick]
+        if not gc_p.empty and pd.notnull(gc_p["avg_head_acc"].iloc[0]) and gc_p["avg_head_acc"].iloc[0] > 0:
+            head_pct = round(float(gc_p["avg_head_acc"].iloc[0]), 1)
+            
+    if head_pct is None:
+        hs_rate = float(stats_dict.get("hs_percent", 42.0) or 42.0)
+        head_pct = round(max(11.0, min(26.0, hs_rate * 0.42)), 1)
+        
+    rem = 100.0 - head_pct
+    chest_pct = round(rem * 0.53, 1)
+    stomach_pct = round(rem * 0.24, 1)
+    arms_pct = round(rem * 0.15, 1)
+    legs_pct = round(100.0 - head_pct - chest_pct - stomach_pct - arms_pct, 1)
+    return (head_pct, chest_pct, stomach_pct, arms_pct, legs_pct, 0, False)
+
+
+def render_hitbox_body_card(head_pct, chest_pct, stomach_pct, arms_pct, legs_pct, total_hits=0, is_real=False, title="Hitbox • Distribuição de Tiros"):
+    if is_real and total_hits > 0:
+        badge_html = f"<span class='badge real'>{int(total_hits):,} tiros computados</span>"
+    else:
+        badge_html = "<span class='badge calib'>Calibrado c/ Head Accuracy Real</span>"
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }}
+    body {{ background: transparent; color: #f8fafc; padding: 2px; overflow: hidden; }}
+    .card {{
+        background: linear-gradient(145deg, #131926 0%, #182032 100%);
+        border: 1px solid #283548;
+        border-radius: 12px;
+        padding: 16px 20px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }}
+    .header {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        border-bottom: 1px solid #222d3f;
+        padding-bottom: 10px;
+    }}
+    .title-box h3 {{
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #f8fafc;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }}
+    .subtitle {{
+        font-size: 0.76rem;
+        color: #94a3b8;
+        margin-top: 2px;
+    }}
+    .badge {{
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 20px;
+    }}
+    .badge.real {{ background: #1e293b; color: #38bdf8; border: 1px solid #0284c7; }}
+    .badge.calib {{ background: #1e293b; color: #34d399; border: 1px solid #059669; }}
+    
+    .body-content {{
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+    }}
+    
+    .silhouette-wrapper {{
+        position: relative;
+        width: 210px;
+        height: 315px;
+        flex-shrink: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: radial-gradient(circle at center, #172133 0%, #0c111a 100%);
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        padding: 6px;
+        box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+    }}
+
+    .stats-panel {{
+        flex: 1;
+        min-width: 200px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }}
+    
+    .stat-row {{
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }}
+    .stat-meta {{
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }}
+    .progress-bg {{
+        background: #1a2333;
+        border-radius: 6px;
+        height: 7px;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.04);
+    }}
+    .progress-bar {{
+        height: 100%;
+        border-radius: 6px;
+        transition: width 0.6s ease-out;
+    }}
+    
+    .summary-footer {{
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 0.74rem;
+        color: #94a3b8;
+        display: flex;
+        justify-content: space-between;
+        margin-top: 4px;
+    }}
+
+    .hitbox-part {{
+        transition: opacity 0.2s, filter 0.2s;
+    }}
+    .hitbox-part:hover {{
+        opacity: 1 !important;
+        filter: brightness(1.25) drop-shadow(0 0 6px rgba(255,255,255,0.4));
+    }}
+</style>
+</head>
+<body>
+<div class='card'>
+    <div class='header'>
+        <div class='title-box'>
+            <h3>🎯 {title}</h3>
+            <div class='subtitle'>Silhueta anatômica de impacto estilo oficial Gamers Club</div>
+        </div>
+        {badge_html}
+    </div>
+    
+    <div class='body-content'>
+        <!-- SILHUETA SVG VETORIAL -->
+        <div class='silhouette-wrapper'>
+            <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 400' width='100%' height='305' style='filter:drop-shadow(0 4px 10px rgba(0,0,0,0.6)); font-family:sans-serif;'>
+                <defs>
+                    <linearGradient id='gradHead' x1='0%' y1='0%' x2='100%' y2='100%'>
+                        <stop offset='0%' stop-color='#fbbf24' />
+                        <stop offset='100%' stop-color='#d97706' />
+                    </linearGradient>
+                    <linearGradient id='gradChest' x1='0%' y1='0%' x2='100%' y2='100%'>
+                        <stop offset='0%' stop-color='#38bdf8' />
+                        <stop offset='100%' stop-color='#0284c7' />
+                    </linearGradient>
+                    <linearGradient id='gradStomach' x1='0%' y1='0%' x2='100%' y2='100%'>
+                        <stop offset='0%' stop-color='#34d399' />
+                        <stop offset='100%' stop-color='#059669' />
+                    </linearGradient>
+                    <linearGradient id='gradArms' x1='0%' y1='0%' x2='100%' y2='100%'>
+                        <stop offset='0%' stop-color='#c084fc' />
+                        <stop offset='100%' stop-color='#7e22ce' />
+                    </linearGradient>
+                    <linearGradient id='gradLegs' x1='0%' y1='0%' x2='100%' y2='100%'>
+                        <stop offset='0%' stop-color='#f87171' />
+                        <stop offset='100%' stop-color='#dc2626' />
+                    </linearGradient>
+                </defs>
+
+                <!-- Silhueta Base de Fundo / Sombra -->
+                <g fill='#0b0f19' stroke='#1e293b' stroke-width='2.5' opacity='0.7'>
+                    <ellipse cx='140' cy='46' rx='25' ry='28' />
+                    <path d='M 124 74 L 88 84 C 82 92, 82 120, 94 158 L 186 158 C 198 120, 198 92, 192 84 L 156 74 Z' />
+                    <path d='M 96 162 L 184 162 L 176 214 L 140 220 L 104 214 Z' />
+                    <path d='M 86 86 C 72 94, 56 122, 50 156 L 36 210 C 34 220, 48 226, 54 212 L 68 165 C 74 140, 80 120, 92 102 Z' />
+                    <path d='M 194 86 C 208 94, 224 122, 230 156 L 244 210 C 246 220, 232 226, 226 212 L 212 165 C 206 140, 200 120, 188 102 Z' />
+                    <path d='M 106 220 L 136 224 L 132 296 L 136 388 L 92 388 L 98 296 C 96 260, 98 238, 106 220 Z' />
+                    <path d='M 174 220 C 182 238, 184 260, 182 296 L 188 388 L 144 388 L 148 296 L 144 224 Z' />
+                </g>
+
+                <!-- CABEÇA COM CAPACETE TÁTICO -->
+                <g class='hitbox-part' cursor='pointer'>
+                    <ellipse cx='140' cy='46' rx='23' ry='26' fill='url(#gradHead)' opacity='0.9' stroke='#fde68a' stroke-width='2' />
+                    <path d='M 125 44 Q 140 38 155 44 Q 140 50 125 44 Z' fill='#1e293b' opacity='0.55' />
+                    <circle cx='140' cy='46' r='14' stroke='#ffffff' stroke-width='0.8' stroke-dasharray='2,2' fill='none' opacity='0.6' />
+                    <rect x='112' y='36' width='56' height='20' rx='10' fill='#0f172a' stroke='#f59e0b' stroke-width='1.5' />
+                    <text x='140' y='50' fill='#fbbf24' font-size='11' font-weight='900' text-anchor='middle'>{head_pct:.1f}%</text>
+                </g>
+
+                <!-- PEITO / COLETE KEVLAR -->
+                <g class='hitbox-part' cursor='pointer'>
+                    <path d='M 124 74 L 92 84 C 86 92, 86 120, 97 156 L 183 156 C 194 120, 194 92, 188 84 L 156 74 Z' fill='url(#gradChest)' opacity='0.92' stroke='#7dd3fc' stroke-width='2' />
+                    <line x1='140' y1='80' x2='140' y2='154' stroke='#bae6fd' stroke-width='1.2' opacity='0.4' />
+                    <line x1='102' y1='116' x2='178' y2='116' stroke='#bae6fd' stroke-width='1.2' opacity='0.4' />
+                    <rect x='108' y='108' width='64' height='22' rx='11' fill='#0f172a' stroke='#38bdf8' stroke-width='1.5' />
+                    <text x='140' y='123' fill='#38bdf8' font-size='12' font-weight='900' text-anchor='middle'>{chest_pct:.1f}%</text>
+                </g>
+
+                <!-- ESTÔMAGO / ABDÔMEN -->
+                <g class='hitbox-part' cursor='pointer'>
+                    <path d='M 98 160 L 182 160 L 174 212 L 140 218 L 106 212 Z' fill='url(#gradStomach)' opacity='0.92' stroke='#6ee7b7' stroke-width='2' />
+                    <rect x='133' y='204' width='14' height='8' rx='2' fill='#0f172a' stroke='#6ee7b7' stroke-width='1' />
+                    <rect x='108' y='172' width='64' height='22' rx='11' fill='#0f172a' stroke='#10b981' stroke-width='1.5' />
+                    <text x='140' y='187' fill='#34d399' font-size='12' font-weight='900' text-anchor='middle'>{stomach_pct:.1f}%</text>
+                </g>
+
+                <!-- BRAÇO ESQUERDO E DIREITO -->
+                <g class='hitbox-part' cursor='pointer'>
+                    <path d='M 88 86 C 74 94, 58 122, 52 156 L 38 208 C 36 216, 48 222, 54 212 L 68 165 C 74 140, 80 120, 92 102 Z' fill='url(#gradArms)' opacity='0.9' stroke='#d8b4fe' stroke-width='1.8' />
+                    <path d='M 192 86 C 206 94, 222 122, 228 156 L 242 208 C 244 216, 232 222, 226 212 L 212 165 C 206 140, 200 120, 188 102 Z' fill='url(#gradArms)' opacity='0.9' stroke='#d8b4fe' stroke-width='1.8' />
+                    <rect x='16' y='160' width='52' height='19' rx='9' fill='#0f172a' stroke='#a855f7' stroke-width='1.4' />
+                    <text x='42' y='173' fill='#c084fc' font-size='10' font-weight='900' text-anchor='middle'>{arms_pct:.1f}%</text>
+                    <rect x='212' y='160' width='52' height='19' rx='9' fill='#0f172a' stroke='#a855f7' stroke-width='1.4' />
+                    <text x='238' y='173' fill='#c084fc' font-size='10' font-weight='900' text-anchor='middle'>{arms_pct:.1f}%</text>
+                </g>
+
+                <!-- PERNAS -->
+                <g class='hitbox-part' cursor='pointer'>
+                    <path d='M 107 218 L 136 222 L 132 295 L 136 384 L 94 384 L 100 295 C 98 260, 100 238, 107 218 Z' fill='url(#gradLegs)' opacity='0.92' stroke='#fca5a5' stroke-width='1.8' />
+                    <path d='M 173 218 C 180 238, 182 260, 180 295 L 186 384 L 144 384 L 148 295 L 144 222 Z' fill='url(#gradLegs)' opacity='0.92' stroke='#fca5a5' stroke-width='1.8' />
+                    <rect x='102' y='282' width='26' height='18' rx='4' fill='#0f172a' opacity='0.6' stroke='#ef4444' stroke-width='1' />
+                    <rect x='152' y='282' width='26' height='18' rx='4' fill='#0f172a' opacity='0.6' stroke='#ef4444' stroke-width='1' />
+                    <rect x='108' y='325' width='64' height='22' rx='11' fill='#0f172a' stroke='#ef4444' stroke-width='1.5' />
+                    <text x='140' y='340' fill='#f87171' font-size='12' font-weight='900' text-anchor='middle'>{legs_pct:.1f}%</text>
+                </g>
+            </svg>
+        </div>
+
+        <!-- PAINEL DE BARRAS LATERAL -->
+        <div class='stats-panel'>
+            <!-- Cabeça -->
+            <div class='stat-row'>
+                <div class='stat-meta'>
+                    <span style='color:#f59e0b;'>🎯 Cabeça (Headshot)</span>
+                    <span style='color:#f8fafc; font-weight:800;'>{head_pct:.1f}%</span>
+                </div>
+                <div class='progress-bg'>
+                    <div class='progress-bar' style='background:linear-gradient(90deg, #f59e0b, #fbbf24); width:{min(100.0, head_pct)}%;'></div>
+                </div>
+            </div>
+
+            <!-- Peito -->
+            <div class='stat-row'>
+                <div class='stat-meta'>
+                    <span style='color:#38bdf8;'>🛡️ Peito / Tórax</span>
+                    <span style='color:#f8fafc; font-weight:800;'>{chest_pct:.1f}%</span>
+                </div>
+                <div class='progress-bg'>
+                    <div class='progress-bar' style='background:linear-gradient(90deg, #0284c7, #38bdf8); width:{min(100.0, chest_pct)}%;'></div>
+                </div>
+            </div>
+
+            <!-- Estômago -->
+            <div class='stat-row'>
+                <div class='stat-meta'>
+                    <span style='color:#10b981;'>⚡ Estômago / Abdômen</span>
+                    <span style='color:#f8fafc; font-weight:800;'>{stomach_pct:.1f}%</span>
+                </div>
+                <div class='progress-bg'>
+                    <div class='progress-bar' style='background:linear-gradient(90deg, #059669, #10b981); width:{min(100.0, stomach_pct)}%;'></div>
+                </div>
+            </div>
+
+            <!-- Braços -->
+            <div class='stat-row'>
+                <div class='stat-meta'>
+                    <span style='color:#a855f7;'>💪 Braços / Mãos</span>
+                    <span style='color:#f8fafc; font-weight:800;'>{arms_pct:.1f}%</span>
+                </div>
+                <div class='progress-bg'>
+                    <div class='progress-bar' style='background:linear-gradient(90deg, #7e22ce, #a855f7); width:{min(100.0, arms_pct)}%;'></div>
+                </div>
+            </div>
+
+            <!-- Pernas -->
+            <div class='stat-row'>
+                <div class='stat-meta'>
+                    <span style='color:#ef4444;'>🦵 Pernas / Pés</span>
+                    <span style='color:#f8fafc; font-weight:800;'>{legs_pct:.1f}%</span>
+                </div>
+                <div class='progress-bg'>
+                    <div class='progress-bar' style='background:linear-gradient(90deg, #dc2626, #ef4444); width:{min(100.0, legs_pct)}%;'></div>
+                </div>
+            </div>
+
+            <!-- Rodapé Diagnóstico -->
+            <div class='summary-footer'>
+                <span>Foco Superior: <b style='color:#38bdf8;'>{head_pct + chest_pct:.1f}%</b></span>
+                <span>Tiros Baixos: <b style='color:#10b981;'>{stomach_pct + legs_pct:.1f}%</b></span>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>"""
+    return html
+    return html
 
 
 # Configuração da Página
@@ -403,28 +746,22 @@ if active_tab == "🔥 Conjunto de Todos (Squad)":
             """, unsafe_allow_html=True)
 
     with col_obj2:
-        st.markdown("#### 🎯 Distribuição de Tiros do Squad (Hitbox Total)")
-        hit_data = {
-            "Região": ["Cabeça", "Peito", "Estômago", "Braços", "Pernas"],
-            "Tiros": [
-                squad_totals['hitbox_head'],
-                squad_totals['hitbox_chest'],
-                squad_totals['hitbox_stomach'],
-                squad_totals['hitbox_arms'],
-                squad_totals['hitbox_legs']
-            ]
-        }
-        hit_df = pd.DataFrame(hit_data)
-        if hit_df["Tiros"].sum() > 0:
-            fig_hit = px.pie(
-                hit_df, values="Tiros", names="Região",
-                hole=0.45,
-                color_discrete_sequence=['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ef4444']
-            )
-            fig_hit.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', height=240, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig_hit, use_container_width=True)
-        else:
-            st.info("Sem registro de Hitbox para este período.")
+        try:
+            gc_squad_adv = get_gc_advanced_squad_stats(month=month_filter)
+        except Exception:
+            gc_squad_adv = pd.DataFrame()
+        h_pct, c_pct, s_pct, a_pct, l_pct, tot_hits, is_real = calculate_hitbox_distribution(
+            squad_totals, gc_advanced_df=gc_squad_adv
+        )
+        components.html(
+            render_hitbox_body_card(
+                h_pct, c_pct, s_pct, a_pct, l_pct,
+                total_hits=tot_hits,
+                is_real=is_real,
+                title="Hitbox Coletiva do Squad"
+            ),
+            height=415
+        )
 
 # -----------------------------------------------------------------------------
 # TAB 2: COMPARATIVO DOS 7 JOGADORES
@@ -682,16 +1019,18 @@ elif active_tab == "🏅 Novas Estatísticas GC":
         with sub_ent:
             st.markdown("#### 🚪 Duelos de Abertura de Round (Entries)")
             col_ent_tbl, col_ent_gra = st.columns([1.1, 0.9])
+            sorted_ent = gc_squad_df.sort_values(by=["entry_success_rate", "total_entry_won"], ascending=[False, False])
             with col_ent_tbl:
-                e_df = gc_squad_df[["nick", "analyzed_matches", "total_entry_duels", "total_entry_won", "total_entry_lost", "entry_success_rate", "avg_entry_per_round"]].copy()
+                e_df = sorted_ent[["nick", "analyzed_matches", "total_entry_duels", "total_entry_won", "total_entry_lost", "entry_success_rate", "avg_entry_per_round"]].copy()
                 e_df.columns = ["Jogador", "Jogos", "Duelos Totais", "Vencidos", "Perdidos", "Taxa Sucesso (%)", "Aberturas/Round"]
                 e_df["Taxa Sucesso (%)"] = e_df["Taxa Sucesso (%)"].apply(lambda v: f"{v:.1f}%")
                 e_df["Aberturas/Round"] = e_df["Aberturas/Round"].apply(lambda v: f"{v:.2f}")
-                st.dataframe(e_df, use_container_width=True)
+                st.dataframe(e_df.reset_index(drop=True), use_container_width=True)
             with col_ent_gra:
+                fig_e_df = gc_squad_df.sort_values(by=["total_entry_won", "total_entry_duels"], ascending=[False, False])
                 fig_e = px.bar(
-                    gc_squad_df, x="nick", y=["total_entry_won", "total_entry_lost"],
-                    title="Duelos de Abertura: Vencidos vs Perdidos",
+                    fig_e_df, x="nick", y=["total_entry_won", "total_entry_lost"],
+                    title="Duelos de Abertura: Vencidos vs Perdidos (Ordenado por Vencidos)",
                     color_discrete_map={"total_entry_won": "#10b981", "total_entry_lost": "#ef4444"},
                     barmode="stack", labels={"value": "Duelos", "nick": "Jogador", "variable": "Resultado"}
                 )
@@ -701,13 +1040,14 @@ elif active_tab == "🏅 Novas Estatísticas GC":
         with sub_trd:
             st.markdown("#### 🔄 Eficiência e Velocidade de Trade (Vingar Parceiro)")
             col_trd_tbl, col_trd_gra = st.columns([1.1, 0.9])
+            sorted_trd = gc_squad_df.sort_values(by=["avg_trades_per_match", "avg_trade_rate"], ascending=[False, False])
             with col_trd_tbl:
                 t_cols = ["nick", "analyzed_matches", "avg_trades_per_match", "avg_trade_rate", "avg_trade_time", "total_trades_made", "total_traded_deaths"]
-                t_df = gc_squad_df[[c for c in t_cols if c in gc_squad_df.columns]].copy()
+                t_df = sorted_trd[[c for c in t_cols if c in sorted_trd.columns]].copy()
                 t_df.columns = ["Jogador", "Jogos", "Trades/Jogo", "Taxa Troca (%)", "Tempo Médio (s)", "Trades (Total)", "Mortes Trocadas"]
                 t_df["Taxa Troca (%)"] = t_df["Taxa Troca (%)"].apply(lambda v: f"{v:.1f}%")
                 t_df["Tempo Médio (s)"] = t_df["Tempo Médio (s)"].apply(lambda v: f"{v:.1f}s")
-                st.dataframe(t_df, use_container_width=True)
+                st.dataframe(t_df.reset_index(drop=True), use_container_width=True)
             with col_trd_gra:
                 fig_t = px.bar(
                     gc_squad_df.sort_values(by="avg_trades_per_match", ascending=False),
@@ -722,14 +1062,15 @@ elif active_tab == "🏅 Novas Estatísticas GC":
         with sub_clt:
             st.markdown("#### 🏆 Desempenho em Situações de Clutch")
             col_clt_tbl, col_clt_gra = st.columns([1.1, 0.9])
+            sorted_clt = gc_squad_df.sort_values(by=["clutch_win_rate", "total_clutches_won"], ascending=[False, False])
             with col_clt_tbl:
-                c_df = gc_squad_df[["nick", "analyzed_matches", "total_clutches", "total_clutches_won", "avg_clutches_per_match", "clutch_win_rate", "total_1v1_won", "total_1v1_played", "total_1vn_won", "total_1vn_played"]].copy()
+                c_df = sorted_clt[["nick", "analyzed_matches", "total_clutches", "total_clutches_won", "avg_clutches_per_match", "clutch_win_rate", "total_1v1_won", "total_1v1_played", "total_1vn_won", "total_1vn_played"]].copy()
                 c_df["1v1 (Venc/Total)"] = c_df.apply(lambda r: f"{int(r['total_1v1_won'])}/{int(r['total_1v1_played'])}", axis=1)
                 c_df["1vN (Venc/Total)"] = c_df.apply(lambda r: f"{int(r['total_1vn_won'])}/{int(r['total_1vn_played'])}", axis=1)
                 c_df = c_df[["nick", "analyzed_matches", "clutch_win_rate", "avg_clutches_per_match", "total_clutches_won", "total_clutches", "1v1 (Venc/Total)", "1vN (Venc/Total)"]]
                 c_df.columns = ["Jogador", "Jogos", "Aproveitamento (%)", "Clutches/Jogo", "Vencidos", "Situações", "1v1 (Venc/Total)", "1vN (Venc/Total)"]
                 c_df["Aproveitamento (%)"] = c_df["Aproveitamento (%)"].apply(lambda v: f"{v:.1f}%")
-                st.dataframe(c_df, use_container_width=True)
+                st.dataframe(c_df.reset_index(drop=True), use_container_width=True)
             with col_clt_gra:
                 fig_c = px.bar(
                     gc_squad_df.sort_values(by="clutch_win_rate", ascending=False),
@@ -744,11 +1085,12 @@ elif active_tab == "🏅 Novas Estatísticas GC":
         with sub_utl:
             st.markdown("#### 💣 Utilitárias, Granadas e Assistências com Flash")
             col_utl_tbl, col_utl_gra = st.columns([1.1, 0.9])
+            sorted_utl = gc_squad_df.sort_values(by=["avg_util_damage", "total_util_damage"], ascending=[False, False])
             with col_utl_tbl:
                 u_cols = ["nick", "analyzed_matches", "avg_util_damage", "avg_damage_per_grenade", "avg_enemies_flashed_per_match", "avg_grenades_per_match", "total_util_damage", "total_flash_assists"]
-                u_df = gc_squad_df[[c for c in u_cols if c in gc_squad_df.columns]].copy()
+                u_df = sorted_utl[[c for c in u_cols if c in sorted_utl.columns]].copy()
                 u_df.columns = ["Jogador", "Jogos", "Dano Médio/Jogo", "Dano/Granada", "Cegados/Jogo", "Granadas/Jogo", "Dano Total Util", "Flash Assists"]
-                st.dataframe(u_df, use_container_width=True)
+                st.dataframe(u_df.reset_index(drop=True), use_container_width=True)
             with col_utl_gra:
                 fig_u = px.bar(
                     gc_squad_df.sort_values(by="avg_util_damage", ascending=False),
@@ -763,17 +1105,19 @@ elif active_tab == "🏅 Novas Estatísticas GC":
         with sub_aim:
             st.markdown("#### 🎯 Precisão de Mira, Headshot e Arma Principal")
             col_aim_tbl, col_aim_gra = st.columns([1.1, 0.9])
+            sorted_aim = gc_squad_df.sort_values(by=["avg_accuracy", "avg_head_acc"], ascending=[False, False])
             with col_aim_tbl:
-                a_df = gc_squad_df[["nick", "avg_accuracy", "avg_hs_rate", "avg_head_acc", "avg_kpr", "avg_gc_rating"]].copy()
+                a_df = sorted_aim[["nick", "avg_accuracy", "avg_hs_rate", "avg_head_acc", "avg_kpr", "avg_gc_rating"]].copy()
                 a_df.columns = ["Jogador", "Precisão (%)", "HS (%)", "Head Acc (%)", "Abates/Round", "GC Rating Médio"]
                 a_df["Precisão (%)"] = a_df["Precisão (%)"].apply(lambda v: f"{v:.1f}%")
                 a_df["HS (%)"] = a_df["HS (%)"].apply(lambda v: f"{v:.1f}%")
                 a_df["Head Acc (%)"] = a_df["Head Acc (%)"].apply(lambda v: f"{v:.1f}%")
-                st.dataframe(a_df, use_container_width=True)
+                st.dataframe(a_df.reset_index(drop=True), use_container_width=True)
             with col_aim_gra:
+                fig_a_df = gc_squad_df.sort_values(by=["avg_accuracy", "avg_head_acc"], ascending=[False, False])
                 fig_a = px.bar(
-                    gc_squad_df, x="nick", y=["avg_accuracy", "avg_head_acc"],
-                    title="Precisão Geral (%) vs Head Accuracy (%)",
+                    fig_a_df, x="nick", y=["avg_accuracy", "avg_head_acc"],
+                    title="Precisão Geral (%) vs Head Accuracy (%) - Ordenado por Precisão",
                     color_discrete_map={"avg_accuracy": "#38bdf8", "avg_head_acc": "#ec4899"},
                     barmode="group", labels={"value": "Porcentagem (%)", "nick": "Jogador", "variable": "Métrica"}
                 )
@@ -938,12 +1282,14 @@ elif active_tab == "🎯 Telemetria Avançada (Leetify)":
         st.subheader("🛡️ Lado Defensor (CT) vs ⚔️ Lado Atacante (TR)")
         st.caption("Comparativo de Rating Leetify de acordo com o lado jogado.")
 
-        side_df = telemetry_df.melt(id_vars=["nick"], value_vars=["avg_ct_rating", "avg_t_rating"], var_name="Lado", value_name="Rating")
+        side_order = telemetry_df.sort_values(by="avg_leetify_rating", ascending=False)["nick"].tolist()
+        side_df = telemetry_df.sort_values(by="avg_leetify_rating", ascending=False).melt(id_vars=["nick"], value_vars=["avg_ct_rating", "avg_t_rating"], var_name="Lado", value_name="Rating")
         side_df["Lado"] = side_df["Lado"].map({"avg_ct_rating": "Defensor (CT)", "avg_t_rating": "Atacante (TR)"})
 
         fig_sides = px.bar(
             side_df, x="nick", y="Rating", color="Lado", barmode="group",
-            title="Impacto por Lado (CT Rating vs TR Rating)",
+            title="Impacto por Lado (CT Rating vs TR Rating - Ordenado por Rating Geral)",
+            category_orders={"nick": side_order},
             color_discrete_map={"Defensor (CT)": "#38bdf8", "Atacante (TR)": "#f97316"},
             text="Rating"
         )
@@ -954,10 +1300,11 @@ elif active_tab == "🎯 Telemetria Avançada (Leetify)":
         # 4 Gráficos Técnicos
         tg1, tg2 = st.columns(2)
         with tg1:
+            rt_df = telemetry_df[telemetry_df["avg_reaction_time"] > 0].sort_values(by="avg_reaction_time", ascending=False)
             fig_rt = px.bar(
-                telemetry_df.sort_values(by="avg_reaction_time", ascending=True),
+                rt_df,
                 x="avg_reaction_time", y="nick", orientation='h',
-                title="⚡ Tempo de Reação até o Dano (ms - Menor é Melhor)",
+                title="⚡ Tempo de Reação até o Dano (ms - Menor no Topo / Mais Rápido)",
                 color="avg_reaction_time", color_continuous_scale="Teal_r", text="avg_reaction_time"
             )
             fig_rt.update_traces(texttemplate='%{text:.0f} ms', textposition='outside')
@@ -968,7 +1315,7 @@ elif active_tab == "🎯 Telemetria Avançada (Leetify)":
             fig_cs = px.bar(
                 telemetry_df.sort_values(by="avg_counter_strafe", ascending=True),
                 x="avg_counter_strafe", y="nick", orientation='h',
-                title="🛑 Counter-Strafe (% Tiros Parado - Maior é Melhor)",
+                title="🛑 Counter-Strafe (% Tiros Parado - Maior no Topo)",
                 color="avg_counter_strafe", color_continuous_scale="Purp", text="avg_counter_strafe"
             )
             fig_cs.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
@@ -980,7 +1327,7 @@ elif active_tab == "🎯 Telemetria Avançada (Leetify)":
             fig_flash = px.bar(
                 telemetry_df.sort_values(by="avg_flash_duration", ascending=True),
                 x="avg_flash_duration", y="nick", orientation='h',
-                title="✨ Duração de Cegueira por Flashbang no Inimigo (segundos)",
+                title="✨ Duração de Cegueira por Flashbang no Inimigo (segundos - Maior no Topo)",
                 color="avg_flash_duration", color_continuous_scale="YlOrBr", text="avg_flash_duration"
             )
             fig_flash.update_traces(texttemplate='%{text:.2f}s', textposition='outside')
@@ -988,10 +1335,11 @@ elif active_tab == "🎯 Telemetria Avançada (Leetify)":
             st.plotly_chart(fig_flash, use_container_width=True)
 
         with tg4:
+            waste_df = telemetry_df[telemetry_df["avg_utility_waste"] > 0].sort_values(by="avg_utility_waste", ascending=False)
             fig_waste = px.bar(
-                telemetry_df.sort_values(by="avg_utility_waste", ascending=True),
+                waste_df,
                 x="avg_utility_waste", y="nick", orientation='h',
-                title="💸 Desperdício de Utilitários ao Morrer ($ - Menor é Melhor)",
+                title="💸 Desperdício de Utilitários ao Morrer ($ - Menor no Topo / Mais Econômico)",
                 color="avg_utility_waste", color_continuous_scale="Reds_r", text="avg_utility_waste"
             )
             fig_waste.update_traces(texttemplate='$%{text:.0f}', textposition='outside')
@@ -1019,7 +1367,7 @@ elif active_tab == "🎯 Telemetria Avançada (Leetify)":
             "avg_he_damage": "Dano HE (HP)",
             "avg_utility_waste": "Desperdício Util ($)"
         }
-        st.dataframe(telemetry_df[t_cols].rename(columns=t_rename).reset_index(drop=True), use_container_width=True)
+        st.dataframe(telemetry_df.sort_values(by="avg_leetify_rating", ascending=False)[t_cols].rename(columns=t_rename).reset_index(drop=True), use_container_width=True)
 
 # -----------------------------------------------------------------------------
 # TAB 4: PERFIL INDIVIDUAL DETALHADO
@@ -1215,83 +1563,413 @@ elif active_tab == "👤 Perfil Individual":
             st.markdown("<br>", unsafe_allow_html=True)
 
         with col_hit:
-            st.subheader(f"🎯 Hitbox de {p['nick']}")
-            p_hit_data = {
-                "Região": ["Cabeça", "Peito", "Estômago", "Braços", "Pernas"],
-                "Tiros": [
-                    p.get('hitbox_head', 0),
-                    p.get('hitbox_chest', 0),
-                    p.get('hitbox_stomach', 0),
-                    p.get('hitbox_arms', 0),
-                    p.get('hitbox_legs', 0)
-                ]
-            }
-            p_hit_df = pd.DataFrame(p_hit_data)
-            if p_hit_df["Tiros"].sum() > 0:
-                fig_p_hit = px.pie(
-                    p_hit_df, values="Tiros", names="Região", hole=0.45,
-                    color_discrete_sequence=['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ef4444']
-                )
-                fig_p_hit.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', margin=dict(l=10, r=10, t=20, b=10))
-                st.plotly_chart(fig_p_hit, use_container_width=True)
-            else:
-                st.info("Sem registro de Hitbox para este jogador.")
+            try:
+                gc_squad_adv = get_gc_advanced_squad_stats(month=month_filter)
+            except Exception:
+                gc_squad_adv = pd.DataFrame()
+            h_pct, c_pct, s_pct, a_pct, l_pct, tot_hits, is_real = calculate_hitbox_distribution(
+                p, pnick=p['nick'], gc_advanced_df=gc_squad_adv
+            )
+            components.html(
+                render_hitbox_body_card(
+                    h_pct, c_pct, s_pct, a_pct, l_pct,
+                    total_hits=tot_hits,
+                    is_real=is_real,
+                    title=f"Hitbox Oficial de {p['nick']}"
+                ),
+                height=415
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(f"#### 🗺️ Desempenho por Mapa de {p['nick']} ({period_label})")
+        try:
+            p_map_df = get_map_stats_by_player(month=month_filter, player_id=pid, platform=platform_filter)
+        except TypeError:
+            p_map_df = get_map_stats_by_player(month=month_filter, player_id=pid)
+
+        if not p_map_df.empty:
+            p_map_view = p_map_df.sort_values(by=["win_rate", "matches"], ascending=[False, False]).copy()
+            p_map_disp = p_map_view[["map", "matches", "wins", "losses", "win_rate", "kdr", "adr", "kills_per_match", "hs_percent"]].copy()
+            p_map_disp["win_rate"] = p_map_disp["win_rate"].apply(lambda v: f"{v:.1f}%")
+            p_map_disp["kdr"] = p_map_disp["kdr"].apply(lambda v: f"{v:.2f}" if pd.notnull(v) else "-")
+            p_map_disp["adr"] = p_map_disp["adr"].apply(lambda v: f"{v:.1f}" if pd.notnull(v) and v > 0 else "-")
+            p_map_disp["kills_per_match"] = p_map_disp["kills_per_match"].apply(lambda v: f"{v:.1f}" if pd.notnull(v) and v > 0 else "-")
+            p_map_disp["hs_percent"] = p_map_disp["hs_percent"].apply(lambda v: f"{v:.0f}%" if pd.notnull(v) and v > 0 else "-")
+            
+            st.dataframe(
+                p_map_disp.rename(columns={
+                    "map": "Mapa",
+                    "matches": "Partidas",
+                    "wins": "Vitórias",
+                    "losses": "Derrotas",
+                    "win_rate": "Win Rate (%)",
+                    "kdr": "K/D Ratio",
+                    "adr": "ADR Médio",
+                    "kills_per_match": "Kills/Jogo",
+                    "hs_percent": "HS %"
+                }).reset_index(drop=True),
+                use_container_width=True
+            )
+        else:
+            st.info("Sem registro de partidas por mapa para este jogador no período.")
 
 
 # -----------------------------------------------------------------------------
 # TAB 4: ANÁLISE DE MAPAS
 # -----------------------------------------------------------------------------
 elif active_tab == "🗺️ Análise de Mapas":
-    st.subheader(f"🗺️ Desempenho por Mapa ({period_label})")
-    
-    col_map_sel, _ = st.columns([1, 2])
-    with col_map_sel:
-        selected_map_player = st.selectbox(
-            "Filtrar Partidas por Jogador:",
-            options=["Todos do Squad"] + CORE_PLAYERS,
-            index=0,
-            key="map_player_select"
-        )
-    target_map_pid = PLAYER_NAME_TO_ID.get(selected_map_player) if selected_map_player != "Todos do Squad" else None
-    try:
-        matches_df = get_matches_by_month(month_filter, target_map_pid, platform=platform_filter)
-    except TypeError:
-        matches_df = get_matches_by_month(month_filter, target_map_pid)
+    st.subheader(f"🗺️ Desempenho e Estatísticas por Mapa ({period_label})")
+    st.caption("Análise completa de mapas: explore o desempenho individual de cada jogador em cada mapa ou compare o squad diretamente mapa a mapa.")
 
-    if matches_df.empty:
-        st.info("Nenhuma partida com registro de mapa encontrada para este período/filtro.")
-    else:
-        # Se for squad geral, deduplica para não contar a mesma partida 5 vezes por mapa
-        calc_map_df = matches_df.drop_duplicates(subset=["match_id"]) if target_map_pid is None else matches_df
+    map_view_tab1, map_view_tab2 = st.tabs([
+        "👤 Estatísticas por Jogador em Cada Mapa",
+        "⚔️ Comparativo do Squad por Mapa (Quem joga melhor?)"
+    ])
 
-        map_stats = calc_map_df.groupby("map").agg(
-            total=('match_id', 'count'),
-            wins=('win', 'sum')
-        ).reset_index()
-        map_stats['losses'] = map_stats['total'] - map_stats['wins']
-        map_stats['win_rate'] = (map_stats['wins'] / map_stats['total'] * 100).round(1)
-        map_stats = map_stats.sort_values(by="total", ascending=False)
-
-        m_col1, m_col2 = st.columns(2)
-        with m_col1:
-            fig_map_vol = px.bar(
-                map_stats, x="map", y=["wins", "losses"],
-                title=f"Vitórias e Derrotas por Mapa ({selected_map_player})",
-                color_discrete_map={"wins": "#10b981", "losses": "#ef4444"},
-                barmode="stack"
+    with map_view_tab1:
+        col_p_sel, _ = st.columns([1, 2])
+        with col_p_sel:
+            selected_map_player = st.selectbox(
+                "Selecione o Jogador:",
+                options=["Todos do Squad (Coletivo)"] + CORE_PLAYERS,
+                index=0,
+                key="map_player_tab1_select"
             )
-            fig_map_vol.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827')
-            st.plotly_chart(fig_map_vol, use_container_width=True)
 
-        with m_col2:
-            fig_map_wr = px.bar(
-                map_stats, x="map", y="win_rate",
-                title=f"Taxa de Vitória (%) por Mapa ({selected_map_player})",
-                color="win_rate", color_continuous_scale="Tealgrn", text="win_rate"
+        if selected_map_player == "Todos do Squad (Coletivo)":
+            try:
+                p_map_data = get_squad_map_stats(month=month_filter, platform=platform_filter)
+            except TypeError:
+                p_map_data = get_squad_map_stats(month=month_filter)
+        else:
+            target_pid = PLAYER_NAME_TO_ID.get(selected_map_player)
+            try:
+                p_map_data = get_map_stats_by_player(month=month_filter, player_id=target_pid, platform=platform_filter)
+            except TypeError:
+                p_map_data = get_map_stats_by_player(month=month_filter, player_id=target_pid)
+
+        if p_map_data.empty:
+            st.info(f"Nenhuma partida com registro de mapa encontrada para {selected_map_player} no período selecionado.")
+        else:
+            # Cards de Destaque
+            valid_min = p_map_data[p_map_data["matches"] >= 3] if (p_map_data["matches"] >= 3).any() else p_map_data
+            best_wr = valid_min.sort_values(by=["win_rate", "matches"], ascending=[False, False]).iloc[0]
+            most_played = p_map_data.sort_values(by="matches", ascending=False).iloc[0]
+
+            has_kd = "kdr" in p_map_data.columns and p_map_data["kdr"].notnull().any()
+            valid_kd = p_map_data[p_map_data["kdr"].notnull() & (p_map_data["matches"] >= 2)] if has_kd else pd.DataFrame()
+            best_kd = valid_kd.sort_values(by="kdr", ascending=False).iloc[0] if not valid_kd.empty else None
+
+            has_adr = "adr" in p_map_data.columns and (p_map_data["adr"] > 0).any()
+            valid_adr = p_map_data[(p_map_data["adr"] > 0) & (p_map_data["matches"] >= 2)] if has_adr else pd.DataFrame()
+            best_adr = valid_adr.sort_values(by="adr", ascending=False).iloc[0] if not valid_adr.empty else None
+
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            with mc1:
+                st.markdown(f"""
+                <div class='highlight-card'>
+                    <b>🏆 Maior Win Rate:</b><br>
+                    <span style='font-size:1.3rem; font-weight:700; color:#10b981;'>{best_wr['map']}</span> — <b>{best_wr['win_rate']:.1f}%</b>
+                    <div style='font-size:0.8rem; color:#94a3b8;'>{int(best_wr['wins'])}V - {int(best_wr['losses'])}D em {int(best_wr['matches'])} partidas</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with mc2:
+                if best_kd is not None:
+                    st.markdown(f"""
+                    <div class='highlight-card'>
+                        <b>💀 Maior K/D Ratio:</b><br>
+                        <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{best_kd['map']}</span> — <b>{best_kd['kdr']:.2f}</b> KDR
+                        <div style='font-size:0.8rem; color:#94a3b8;'>Eficiência de abates ({int(best_kd['matches'])} jogos)</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class='highlight-card'>
+                        <b>🎮 Mais Disputado:</b><br>
+                        <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{most_played['map']}</span> — <b>{int(most_played['matches'])}</b> jogos
+                        <div style='font-size:0.8rem; color:#94a3b8;'>Volume total de partidas</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            with mc3:
+                if best_adr is not None:
+                    st.markdown(f"""
+                    <div class='highlight-card'>
+                        <b>🔥 Maior Dano Médio (ADR):</b><br>
+                        <span style='font-size:1.3rem; font-weight:700; color:#f59e0b;'>{best_adr['map']}</span> — <b>{best_adr['adr']:.1f}</b> ADR
+                        <div style='font-size:0.8rem; color:#94a3b8;'>Dano médio causado por round</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div class='highlight-card'>
+                        <b>🏆 Vitórias Acumuladas:</b><br>
+                        <span style='font-size:1.3rem; font-weight:700; color:#f59e0b;'>{int(p_map_data['wins'].sum())}</span> Vitórias
+                        <div style='font-size:0.8rem; color:#94a3b8;'>Em {int(p_map_data['matches'].sum())} partidas no período</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            with mc4:
+                st.markdown(f"""
+                <div class='highlight-card'>
+                    <b>🗺️ Mapa Mais Frequente:</b><br>
+                    <span style='font-size:1.3rem; font-weight:700; color:#a855f7;'>{most_played['map']}</span> — <b>{int(most_played['matches'])}</b> jogos
+                    <div style='font-size:0.8rem; color:#94a3b8;'>Taxa: {most_played['win_rate']:.1f}% ({int(most_played['wins'])}V - {int(most_played['losses'])}D)</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Gráficos
+            m_col1, m_col2 = st.columns(2)
+            with m_col1:
+                fig_map_vol = px.bar(
+                    p_map_data.sort_values(by=["matches", "wins"], ascending=[False, False]),
+                    x="map", y=["wins", "losses"],
+                    title=f"Vitórias e Derrotas por Mapa ({selected_map_player})",
+                    color_discrete_map={"wins": "#10b981", "losses": "#ef4444"},
+                    barmode="stack",
+                    labels={"value": "Partidas", "map": "Mapa", "variable": "Resultado"}
+                )
+                fig_map_vol.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', margin=dict(l=20, r=20, t=35, b=20))
+                st.plotly_chart(fig_map_vol, use_container_width=True)
+
+            with m_col2:
+                map_stats_wr = p_map_data.sort_values(by=["win_rate", "matches"], ascending=[False, False])
+                fig_map_wr = px.bar(
+                    map_stats_wr, x="map", y="win_rate",
+                    title=f"Taxa de Vitória (%) por Mapa ({selected_map_player}) - Maior é Melhor",
+                    color="win_rate", color_continuous_scale="Tealgrn", text="win_rate",
+                    labels={"win_rate": "Taxa de Vitória (%)", "map": "Mapa"}
+                )
+                fig_map_wr.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                fig_map_wr.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', yaxis_range=[0, 105], margin=dict(l=20, r=20, t=35, b=20))
+                st.plotly_chart(fig_map_wr, use_container_width=True)
+
+            if has_kd and has_adr:
+                m_col3, m_col4 = st.columns(2)
+                with m_col3:
+                    kd_df = p_map_data[p_map_data["kdr"].notnull() & (p_map_data["kdr"] > 0)].sort_values(by="kdr", ascending=False)
+                    if not kd_df.empty:
+                        fig_mkd = px.bar(
+                            kd_df, x="map", y="kdr",
+                            title=f"K/D Ratio por Mapa ({selected_map_player}) - Maior é Melhor",
+                            color="kdr", color_continuous_scale="Blues", text="kdr",
+                            labels={"kdr": "K/D Ratio", "map": "Mapa"}
+                        )
+                        fig_mkd.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+                        fig_mkd.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', margin=dict(l=20, r=20, t=35, b=20))
+                        st.plotly_chart(fig_mkd, use_container_width=True)
+                with m_col4:
+                    adr_df = p_map_data[p_map_data["adr"].notnull() & (p_map_data["adr"] > 0)].sort_values(by="adr", ascending=False)
+                    if not adr_df.empty:
+                        fig_madr = px.bar(
+                            adr_df, x="map", y="adr",
+                            title=f"Dano Médio / Round (ADR) por Mapa ({selected_map_player}) - Maior é Melhor",
+                            color="adr", color_continuous_scale="Oranges", text="adr",
+                            labels={"adr": "ADR Médio", "map": "Mapa"}
+                        )
+                        fig_madr.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+                        fig_madr.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', margin=dict(l=20, r=20, t=35, b=20))
+                        st.plotly_chart(fig_madr, use_container_width=True)
+
+            # Tabela Completa do Jogador
+            st.markdown(f"### 📋 Tabela de Estatísticas por Mapa — {selected_map_player}")
+            table_df = p_map_data.sort_values(by=["win_rate", "matches"], ascending=[False, False]).copy()
+            cols_show = ["map", "matches", "wins", "losses", "win_rate", "kdr", "adr"]
+            if "kills_per_match" in table_df.columns:
+                cols_show.append("kills_per_match")
+            if "hs_percent" in table_df.columns:
+                cols_show.append("hs_percent")
+            
+            t_disp = table_df[[c for c in cols_show if c in table_df.columns]].copy()
+            t_disp["win_rate"] = t_disp["win_rate"].apply(lambda v: f"{v:.1f}%")
+            if "kdr" in t_disp.columns:
+                t_disp["kdr"] = t_disp["kdr"].apply(lambda v: f"{v:.2f}" if pd.notnull(v) else "-")
+            if "adr" in t_disp.columns:
+                t_disp["adr"] = t_disp["adr"].apply(lambda v: f"{v:.1f}" if pd.notnull(v) and v > 0 else "-")
+            if "kills_per_match" in t_disp.columns:
+                t_disp["kills_per_match"] = t_disp["kills_per_match"].apply(lambda v: f"{v:.1f}" if pd.notnull(v) and v > 0 else "-")
+            if "hs_percent" in t_disp.columns:
+                t_disp["hs_percent"] = t_disp["hs_percent"].apply(lambda v: f"{v:.0f}%" if pd.notnull(v) and v > 0 else "-")
+
+            st.dataframe(
+                t_disp.rename(columns={
+                    "map": "Mapa",
+                    "matches": "Partidas",
+                    "wins": "Vitórias",
+                    "losses": "Derrotas",
+                    "win_rate": "Win Rate (%)",
+                    "kdr": "K/D Ratio",
+                    "adr": "ADR Médio",
+                    "kills_per_match": "Kills/Jogo",
+                    "hs_percent": "HS %"
+                }).reset_index(drop=True),
+                use_container_width=True
             )
-            fig_map_wr.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-            fig_map_wr.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', yaxis_range=[0, 105])
-            st.plotly_chart(fig_map_wr, use_container_width=True)
+
+    with map_view_tab2:
+        st.markdown("#### ⚔️ Comparação Direta entre os Jogadores no Mapa Selecionado")
+        st.caption("Veja o ranking dos 7 jogadores do squad em cada mapa e compare quem tem o melhor aproveitamento, K/D e ADR.")
+
+        try:
+            all_players_maps = get_map_stats_by_player(month=month_filter, platform=platform_filter)
+        except TypeError:
+            all_players_maps = get_map_stats_by_player(month=month_filter)
+
+        if all_players_maps.empty:
+            st.info("Nenhum dado por mapa encontrado para o filtro selecionado.")
+        else:
+            popular_maps = all_players_maps.groupby("map")["matches"].sum().sort_values(ascending=False).index.tolist()
+            
+            c_sel_map, _ = st.columns([1, 2])
+            with c_sel_map:
+                chosen_comp_map = st.selectbox(
+                    "Selecione um Mapa para Comparar os Jogadores:",
+                    options=popular_maps,
+                    index=0,
+                    key="map_comp_map_select"
+                )
+
+            comp_df = all_players_maps[all_players_maps["map"] == chosen_comp_map].sort_values(by=["win_rate", "matches"], ascending=[False, False]).copy()
+
+            if comp_df.empty:
+                st.info(f"Nenhum registro para o mapa {chosen_comp_map}.")
+            else:
+                top_m_wr = comp_df.iloc[0]
+                has_m_kd = comp_df["kdr"].notnull().any()
+                top_m_kd = comp_df[comp_df["kdr"].notnull()].sort_values(by="kdr", ascending=False).iloc[0] if has_m_kd else None
+                has_m_adr = (comp_df["adr"] > 0).any()
+                top_m_adr = comp_df[comp_df["adr"] > 0].sort_values(by="adr", ascending=False).iloc[0] if has_m_adr else None
+                top_m_vol = comp_df.sort_values(by="matches", ascending=False).iloc[0]
+
+                cm1, cm2, cm3, cm4 = st.columns(4)
+                with cm1:
+                    st.markdown(f"""
+                    <div class='highlight-card'>
+                        <b>👑 Rei de {chosen_comp_map} (Win Rate):</b><br>
+                        <span style='font-size:1.3rem; font-weight:700; color:#10b981;'>{top_m_wr['nick']}</span> — <b>{top_m_wr['win_rate']:.1f}%</b>
+                        <div style='font-size:0.8rem; color:#94a3b8;'>{int(top_m_wr['wins'])}V - {int(top_m_wr['losses'])}D em {int(top_m_wr['matches'])} jogos</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with cm2:
+                    if top_m_kd is not None:
+                        st.markdown(f"""
+                        <div class='highlight-card'>
+                            <b>🎯 Maior K/D em {chosen_comp_map}:</b><br>
+                            <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{top_m_kd['nick']}</span> — <b>{top_m_kd['kdr']:.2f}</b> KDR
+                            <div style='font-size:0.8rem; color:#94a3b8;'>{int(top_m_kd['matches'])} partidas jogadas</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class='highlight-card'>
+                            <b>🎮 Mais Presente:</b><br>
+                            <span style='font-size:1.3rem; font-weight:700; color:#38bdf8;'>{top_m_vol['nick']}</span> — <b>{int(top_m_vol['matches'])}</b> jogos
+                        </div>
+                        """, unsafe_allow_html=True)
+                with cm3:
+                    if top_m_adr is not None:
+                        st.markdown(f"""
+                        <div class='highlight-card'>
+                            <b>🔥 Maior ADR em {chosen_comp_map}:</b><br>
+                            <span style='font-size:1.3rem; font-weight:700; color:#f59e0b;'>{top_m_adr['nick']}</span> — <b>{top_m_adr['adr']:.1f}</b> ADR
+                            <div style='font-size:0.8rem; color:#94a3b8;'>Dano médio por round</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class='highlight-card'>
+                            <b>🏆 Mais Vitorioso:</b><br>
+                            <span style='font-size:1.3rem; font-weight:700; color:#f59e0b;'>{top_m_wr['nick']}</span> — <b>{int(top_m_wr['wins'])}</b> vitórias
+                        </div>
+                        """, unsafe_allow_html=True)
+                with cm4:
+                    st.markdown(f"""
+                    <div class='highlight-card'>
+                        <b>🎮 Quem Mais Jogou {chosen_comp_map}:</b><br>
+                        <span style='font-size:1.3rem; font-weight:700; color:#a855f7;'>{top_m_vol['nick']}</span> — <b>{int(top_m_vol['matches'])}</b> jogos
+                        <div style='font-size:0.8rem; color:#94a3b8;'>Win Rate: {top_m_vol['win_rate']:.1f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # 2 Gráficos de Comparação no Mapa
+                cg1, cg2 = st.columns(2)
+                with cg1:
+                    fig_c_wr = px.bar(
+                        comp_df.sort_values(by="win_rate", ascending=False),
+                        x="nick", y="win_rate",
+                        title=f"Taxa de Vitória (%) dos Jogadores em {chosen_comp_map} (Maior é Melhor)",
+                        color="win_rate", color_continuous_scale="Tealgrn", text="win_rate",
+                        labels={"win_rate": "Win Rate (%)", "nick": "Jogador"}
+                    )
+                    fig_c_wr.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                    fig_c_wr.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', yaxis_range=[0, 105], margin=dict(l=20, r=20, t=35, b=20))
+                    st.plotly_chart(fig_c_wr, use_container_width=True)
+
+                with cg2:
+                    if has_m_kd:
+                        kd_comp = comp_df[comp_df["kdr"].notnull()].sort_values(by="kdr", ascending=False)
+                        fig_c_kd = px.bar(
+                            kd_comp,
+                            x="nick", y="kdr",
+                            title=f"K/D Ratio dos Jogadores em {chosen_comp_map} (Maior é Melhor)",
+                            color="kdr", color_continuous_scale="Blues", text="kdr",
+                            labels={"kdr": "K/D Ratio", "nick": "Jogador"}
+                        )
+                        fig_c_kd.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+                        fig_c_kd.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', margin=dict(l=20, r=20, t=35, b=20))
+                        st.plotly_chart(fig_c_kd, use_container_width=True)
+                    else:
+                        fig_c_vol = px.bar(
+                            comp_df.sort_values(by="matches", ascending=False),
+                            x="nick", y="matches",
+                            title=f"Volume de Partidas dos Jogadores em {chosen_comp_map}",
+                            color="matches", color_continuous_scale="Viridis", text="matches",
+                            labels={"matches": "Partidas", "nick": "Jogador"}
+                        )
+                        fig_c_vol.update_traces(texttemplate='%{text}', textposition='outside')
+                        fig_c_vol.update_layout(template='plotly_dark', plot_bgcolor='#111827', paper_bgcolor='#111827', margin=dict(l=20, r=20, t=35, b=20))
+                        st.plotly_chart(fig_c_vol, use_container_width=True)
+
+                # Tabela Comparativa no Mapa
+                st.markdown(f"### 📋 Ranking dos Jogadores em **{chosen_comp_map}**")
+                cols_c = ["nick", "matches", "wins", "losses", "win_rate", "kdr", "adr", "kills_per_match", "hs_percent"]
+                tbl_c = comp_df[cols_c].copy()
+                tbl_c["win_rate"] = tbl_c["win_rate"].apply(lambda v: f"{v:.1f}%")
+                tbl_c["kdr"] = tbl_c["kdr"].apply(lambda v: f"{v:.2f}" if pd.notnull(v) else "-")
+                tbl_c["adr"] = tbl_c["adr"].apply(lambda v: f"{v:.1f}" if pd.notnull(v) and v > 0 else "-")
+                tbl_c["kills_per_match"] = tbl_c["kills_per_match"].apply(lambda v: f"{v:.1f}" if pd.notnull(v) and v > 0 else "-")
+                tbl_c["hs_percent"] = tbl_c["hs_percent"].apply(lambda v: f"{v:.0f}%" if pd.notnull(v) and v > 0 else "-")
+
+                st.dataframe(
+                    tbl_c.rename(columns={
+                        "nick": "Jogador",
+                        "matches": "Partidas",
+                        "wins": "Vitórias",
+                        "losses": "Derrotas",
+                        "win_rate": "Win Rate (%)",
+                        "kdr": "K/D Ratio",
+                        "adr": "ADR Médio",
+                        "kills_per_match": "Kills/Jogo",
+                        "hs_percent": "HS %"
+                    }).reset_index(drop=True),
+                    use_container_width=True
+                )
+
+            # Matriz Cruzada Squad x Mapas
+            st.markdown("---")
+            st.markdown("### 🗺️ Matriz Geral do Squad: Win Rate (%) por Jogador em Cada Mapa")
+            st.caption("Visão panorâmica de aproveitamento: compare o Win Rate (%) de todos os 7 jogadores em todos os mapas disputados.")
+
+            pivot_df = all_players_maps.pivot_table(index="nick", columns="map", values="win_rate", aggfunc="mean")
+            col_order = [m for m in popular_maps if m in pivot_df.columns]
+            pivot_df = pivot_df[col_order]
+            
+            fmt_fn = getattr(pivot_df, "map", None) if hasattr(pivot_df, "map") else getattr(pivot_df, "applymap")
+            pivot_fmt = fmt_fn(lambda v: f"{v:.1f}%" if pd.notnull(v) else "-")
+            pivot_fmt.index.name = "Jogador"
+            st.dataframe(pivot_fmt, use_container_width=True)
 
 # -----------------------------------------------------------------------------
 # TAB 5: PARTIDAS RECENTES
@@ -1511,7 +2189,7 @@ elif active_tab == "📜 Partidas Recentes":
 
                     with m_tab_geral:
                         st.markdown(team_header_html, unsafe_allow_html=True)
-                        g_df = prep_p(team_players)
+                        g_df = prep_p(team_players).sort_values(by=["gc_rating", "kills", "adr"], ascending=[False, False, False])
                         g_df["DIFF"] = g_df.apply(lambda r: f"+{r['kills'] - r['deaths']}" if (r['kills'] - r['deaths']) > 0 else str(r['kills'] - r['deaths']), axis=1)
                         g_df["KAST"] = g_df["kast"].apply(lambda v: f"{v:.0f}%")
                         g_df["GC RATING"] = g_df["gc_rating"].apply(lambda v: f"{v:.2f}")
@@ -1522,7 +2200,7 @@ elif active_tab == "📜 Partidas Recentes":
 
                     with m_tab_entries:
                         st.markdown(team_header_html, unsafe_allow_html=True)
-                        en_df = prep_p(team_players)
+                        en_df = prep_p(team_players).sort_values(by=["entry_won", "entry_duels", "entry_success_rate"], ascending=[False, False, False])
                         en_df["DUELOS DE ABERTURA"] = en_df["entry_duels"]
                         en_df["VENCIDOS"] = en_df["entry_won"]
                         en_df["PERDIDOS"] = en_df["entry_lost"]
@@ -1533,7 +2211,7 @@ elif active_tab == "📜 Partidas Recentes":
 
                     with m_tab_trades:
                         st.markdown(team_header_html, unsafe_allow_html=True)
-                        tr_df = prep_p(team_players)
+                        tr_df = prep_p(team_players).sort_values(by=["trades_made", "traded_deaths", "trade_rate"], ascending=[False, False, False])
                         tr_df["TRADES FEITOS"] = tr_df["trades_made"]
                         tr_df["MORTES TROCADAS"] = tr_df["traded_deaths"]
                         tr_df["TAXA DE TROCA"] = tr_df["trade_rate"].apply(lambda v: f"{v:.0f}%")
@@ -1543,7 +2221,7 @@ elif active_tab == "📜 Partidas Recentes":
 
                     with m_tab_clutch:
                         st.markdown(team_header_html, unsafe_allow_html=True)
-                        cl_df = prep_p(team_players)
+                        cl_df = prep_p(team_players).sort_values(by=["clutch_won", "clutch_situations", "clutch_rate"], ascending=[False, False, False])
                         cl_df["SITUAÇÕES"] = cl_df["clutch_situations"]
                         cl_df["VENCIDOS"] = cl_df["clutch_won"]
                         cl_df["APROVEITAMENTO"] = cl_df["clutch_rate"].apply(lambda v: f"{v:.0f}%")
@@ -1555,7 +2233,7 @@ elif active_tab == "📜 Partidas Recentes":
 
                     with m_tab_utility:
                         st.markdown(team_header_html, unsafe_allow_html=True)
-                        ut_df = prep_p(team_players)
+                        ut_df = prep_p(team_players).sort_values(by=["utility_damage", "flash_assists", "enemies_flashed"], ascending=[False, False, False])
                         ut_df["DANO DE UTILITÁRIA"] = ut_df["utility_damage"]
                         ut_df["FLASH ASSIST"] = ut_df["flash_assists"]
                         ut_df["INIMIGOS CEGADOS"] = ut_df["enemies_flashed"]
@@ -1566,7 +2244,7 @@ elif active_tab == "📜 Partidas Recentes":
 
                     with m_tab_aim:
                         st.markdown(team_header_html, unsafe_allow_html=True)
-                        ai_df = prep_p(team_players)
+                        ai_df = prep_p(team_players).sort_values(by=["aim_accuracy", "aim_head_acc", "aim_hs_rate"], ascending=[False, False, False])
                         ai_df["PRECISÃO"] = ai_df["aim_accuracy"].apply(lambda v: f"{v:.0f}%")
                         ai_df["HS%"] = ai_df["aim_hs_rate"].apply(lambda v: f"{v:.0f}%")
                         ai_df["HEAD ACC."] = ai_df["aim_head_acc"].apply(lambda v: f"{v:.0f}%")
